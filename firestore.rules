@@ -30,7 +30,7 @@ service cloud.firestore {
 
     // Connection Test
     match /test/connection {
-      allow read: if true;
+      allow read: if isSignedIn();
     }
 
     // Profiles Rules
