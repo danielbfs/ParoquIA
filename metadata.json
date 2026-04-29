@@ -1,0 +1,13 @@
+{
+  "name": "ParoquIA",
+  "description": "Plataforma de gestão pastoral com IA para integração de mensagens (WhatsApp/Instagram/Email), controle financeiro de dízimos e ofertas, e relatórios administrativos.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "AI Message Analysis",
+    "Financial Management",
+    "Pastoral Reports"
+  ]
+}

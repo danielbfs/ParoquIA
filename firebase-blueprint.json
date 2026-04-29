@@ -1,0 +1,155 @@
+{
+  "entities": {
+    "Parish": {
+      "title": "Parish",
+      "description": "Details of the church/parish",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "Parishioner": {
+      "title": "Parishioner",
+      "description": "Member of the church community",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Communication received from parishioners",
+      "type": "object",
+      "properties": {
+        "platform": { "type": "string", "enum": ["whatsapp", "instagram", "email"] },
+        "sender": { "type": "string" },
+        "content": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "processed", "responded"] },
+        "aiCategory": { "type": "string" },
+        "aiSentiment": { "type": "string" },
+        "suggestedResponse": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["platform", "sender", "content", "status"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial records of tithes and offerings",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["tithe", "offering"] },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "parishionerId": { "type": "string" },
+        "parishionerName": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["type", "amount", "date"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "Church activities and pastoral events",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "location": { "type": "string" }
+      },
+      "required": ["title", "date", "location"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account details and roles",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "staff"] },
+        "name": { "type": "string" }
+      },
+      "required": ["email", "role"]
+    },
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "Global settings for the AI and Parish",
+      "type": "object",
+      "properties": {
+        "aiPrompt": { "type": "string" },
+        "parishName": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "ConversationMeta": {
+      "title": "ConversationMeta",
+      "description": "Metadata for communication channels",
+      "type": "object",
+      "properties": {
+        "sender": { "type": "string" },
+        "isAiEnabled": { "type": "boolean" },
+        "lastMessageAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sender", "isAiEnabled", "lastMessageAt"]
+    },
+    "Critique": {
+      "title": "Critique",
+      "description": "Feedback on AI responses",
+      "type": "object",
+      "properties": {
+        "messageId": { "type": "string" },
+        "originalContent": { "type": "string" },
+        "aiResponse": { "type": "string" },
+        "critique": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["messageId", "critique", "createdAt"]
+    }
+  },
+  "firestore": {
+    "parishes": {
+      "schema": "Parish",
+      "description": "List of parishes"
+    },
+    "profiles": {
+      "schema": "UserProfile",
+      "description": "User roles and permissions"
+    },
+    "config": {
+      "schema": "SystemConfig",
+      "description": "Global AI settings"
+    },
+    "parishioners": {
+      "schema": "Parishioner",
+      "description": "Church members directory"
+    },
+    "messages": {
+      "schema": "Message",
+      "description": "Communication log"
+    },
+    "conversations": {
+      "schema": "ConversationMeta",
+      "description": "Conversation controls"
+    },
+    "critiques": {
+      "schema": "Critique",
+      "description": "AI feedback log"
+    },
+    "transactions": {
+      "schema": "Transaction",
+      "description": "Tithes and offerings registry"
+    },
+    "events": {
+      "schema": "Event",
+      "description": "Pastoral calendar"
+    }
+  }
+}

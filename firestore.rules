@@ -1,0 +1,139 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+             get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Connection Test
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // Profiles Rules
+    match /profiles/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId && !("role" in incoming()));
+    }
+
+    // Config Rules
+    match /config/{configId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Parish Rules
+    match /parishes/{parishId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Parishioner Rules
+    match /parishioners/{parishionerId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidParishioner(incoming());
+      allow update: if isSignedIn() && (isAdmin() || isValidParishioner(incoming()));
+      allow delete: if isAdmin();
+    }
+
+    function isValidParishioner(data) {
+      return data.keys().hasAll(['name']) &&
+             data.name is string && data.name.size() <= 200;
+    }
+
+    // Message Rules
+    match /messages/{messageId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidMessage(incoming());
+      allow update: if isSignedIn() && isValidMessage(incoming());
+      allow delete: if isAdmin();
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['platform', 'sender', 'content', 'status', 'role', 'createdAt']) &&
+             data.platform in ['whatsapp', 'instagram', 'email'] &&
+             data.status in ['pending', 'processed', 'responded'] &&
+             data.role in ['user', 'ai', 'system'] &&
+             data.content is string && data.content.size() <= 5000;
+    }
+
+    // Conversation Rules
+    match /conversations/{convId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidConversation(incoming());
+      allow update: if isSignedIn() && isValidConversation(incoming());
+      allow delete: if isAdmin();
+    }
+
+    function isValidConversation(data) {
+      return data.keys().hasAll(['sender', 'isAiEnabled', 'lastMessageAt']) &&
+             data.sender is string && data.sender.size() <= 200 &&
+             data.isAiEnabled is bool;
+    }
+
+    // Critique Rules
+    match /critiques/{critiqueId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidCritique(incoming());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    function isValidCritique(data) {
+      return data.keys().hasAll(['messageId', 'critique', 'createdAt']) &&
+             isValidId(data.messageId) &&
+             data.critique is string && data.critique.size() <= 5000;
+    }
+
+    // Transaction Rules
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidTransaction(incoming());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['type', 'amount', 'date']) &&
+             data.type in ['tithe', 'offering'] &&
+             data.amount is number && data.amount > 0;
+    }
+
+    // Event Rules
+    match /events/{eventId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidEvent(incoming());
+      allow update: if isSignedIn() && (isAdmin() || isValidEvent(incoming()));
+      allow delete: if isAdmin();
+    }
+
+    function isValidEvent(data) {
+      return data.keys().hasAll(['title', 'date', 'location']) &&
+             data.title is string && data.title.size() <= 200;
+    }
+  }
+}
