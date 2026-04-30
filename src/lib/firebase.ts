@@ -4,9 +4,9 @@ import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 
 // In AI Studio, the firebase-applet-config.json is generated automatically.
 // We prioritize environment variables for easier updates and deployment flexibility.
-import localConfig from '../../firebase-applet-config.json' assert { type: 'json' };
+import localConfig from '../../firebase-applet-config.json' with { type: 'json' };
 
-const firebaseConfig = localConfig || {};
+const firebaseConfig: any = localConfig || {};
 
 // Override or fill with environment variables
 const finalConfig = {

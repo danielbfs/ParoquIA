@@ -13,6 +13,9 @@ RUN npm install
 # Copy the rest of the application code
 COPY . .
 
+# Ensure firebase-applet-config.json exists for the build (it's not in git)
+RUN if [ ! -f firebase-applet-config.json ]; then echo "{}" > firebase-applet-config.json; fi
+
 # Build the application
 RUN npm run build
 
