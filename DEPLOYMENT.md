@@ -53,7 +53,7 @@ Inicie o contêiner:
 docker compose up -d --build
 ```
 
-**Importante:** Este projeto assume que você já tem uma rede Docker externa chamada `proxy` onde seu Traefik central está rodando. Caso o nome da sua rede seja diferente, altere a seção `networks` no final do arquivo `docker-compose.yml`.
+**Importante:** Este projeto utiliza a porta `3000` via `127.0.0.1`. Certifique-se de que o seu Traefik central está configurado para ler os labels do Docker e alcançar o serviço através dessa porta.
 
 ## 5. Verificação
 
