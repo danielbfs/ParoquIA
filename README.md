@@ -64,6 +64,14 @@ npm run build
 npm start
 ```
 
-## 📄 Licença
+## 👨‍💻 Desenvolvedor
 
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para detalhes.
+Este projeto é desenvolvido e mantido por **Daniel Silva**.
+- **E-mail:** danielbfs@gmail.com
+- **GitHub:** [danielbfs](https://github.com/danielbfs)
+
+## 📄 Licença e Atribuição
+
+Este projeto está sob a licença MIT. Caso deseje utilizar, modificar ou distribuir este software, é obrigatório citar o repositório original do GitHub e creditar o desenvolvedor original.
+
+Veja o arquivo [LICENSE](LICENSE) para detalhes completos da licença MIT.

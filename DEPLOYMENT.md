@@ -29,7 +29,7 @@ sudo sh get-docker.sh
 Clone o repositório na sua VPS:
 
 ```bash
-git clone https://github.com/seu-usuario/seu-repositorio.git app
+git clone https://github.com/danielbfs/ParoquIA.git app
 cd app
 ```
 
@@ -77,4 +77,6 @@ docker compose up -d --build
 ```
 
 ---
+**Desenvolvedor:** Daniel Silva (danielbfs@gmail.com)
+
 **Nota sobre Firewall:** Certifique-se de que as portas 80 e 443 estão abertas no firewall da Hostinger (Painel de Controle -> VPS -> Firewall).
