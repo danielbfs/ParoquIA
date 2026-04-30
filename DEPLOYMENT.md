@@ -43,6 +43,7 @@ nano .env
 Preencha as variáveis de ambiente necessárias, especialmente:
 - `DOMAIN`: O domínio que você usará (ex: `paroquia.seudominio.com.br`).
 - `EMAIL`: Seu e-mail para registro do SSL no Let's Encrypt.
+- `GEMINI_API_KEY`: A chave obtida no Google AI Studio para o funcionamento da IA.
 - Todas as chaves do Firebase e do Evolution API.
 
 ## 4. Inicialização
