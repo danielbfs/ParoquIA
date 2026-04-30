@@ -90,10 +90,11 @@
       "type": "object",
       "properties": {
         "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
         "addedBy": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["email"]
+      "required": ["email", "role"]
     },
     "SystemConfig": {
       "title": "SystemConfig",

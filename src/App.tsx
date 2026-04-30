@@ -103,19 +103,16 @@ export default function App() {
           let userProfile = profiles?.find(p => p.id === u.uid);
           
           if (!userProfile) {
-            // Check if this is the bootstrap admin email
-            const isBootstrapAdmin = u.email === 'danielbfs@gmail.com';
-            
             // Check if email is in authorized list
-            let authorized = isBootstrapAdmin;
-            if (!authorized) {
-              const authEmails = await firestoreService.getCollection<AuthorizedEmail>('authorized_emails');
-              authorized = authEmails?.some(ae => ae.email.toLowerCase() === u.email?.toLowerCase()) || false;
-            }
+            const authEmails = await firestoreService.getCollection<AuthorizedEmail>('authorized_emails');
+            const authEntry = authEmails?.find(ae => ae.email.toLowerCase() === u.email?.toLowerCase());
+
+            const isBootstrapAdmin = u.email === 'danielbfs@gmail.com';
+            let authorized = isBootstrapAdmin || !!authEntry;
 
             const newProfile: UserProfile = { 
               email: u.email!, 
-              role: isBootstrapAdmin ? 'admin' : 'user', 
+              role: isBootstrapAdmin ? 'admin' : (authEntry?.role || 'user'), 
               name: u.displayName || 'Usuário',
               photoURL: u.photoURL || undefined,
               isAuthorized: authorized
@@ -143,11 +140,15 @@ export default function App() {
             // Re-verify authorization for regular users
             if (!userProfile.isAuthorized) {
               const authEmails = await firestoreService.getCollection<AuthorizedEmail>('authorized_emails');
-              const isWhitelisted = authEmails?.some(ae => ae.email.toLowerCase() === u.email?.toLowerCase()) || false;
+              const authEntry = authEmails?.find(ae => ae.email.toLowerCase() === u.email?.toLowerCase());
               
-              if (isWhitelisted) {
-                await firestoreService.updateDocument('profiles', u.uid, { isAuthorized: true });
-                userProfile.isAuthorized = true;
+              if (authEntry) {
+                const updates: Partial<UserProfile> = { 
+                  isAuthorized: true,
+                  role: authEntry.role // Sync role from auth list
+                };
+                await firestoreService.updateDocument('profiles', u.uid, updates);
+                userProfile = { ...userProfile, ...updates };
               }
             }
           }
@@ -190,6 +191,11 @@ export default function App() {
     const unsubEvents = firestoreService.subscribeCollection<ChurchEvent>('events', [orderBy('date', 'asc')], setEvents);
     const unsubConversations = firestoreService.subscribeCollection<ConversationMeta>('conversations', [orderBy('lastMessageAt', 'desc')], setConversationMetas);
     const unsubCritiques = firestoreService.subscribeCollection<Critique>('critiques', [orderBy('createdAt', 'desc')], setCritiques);
+    const unsubConfig = firestoreService.subscribeCollection<SystemConfig>('config', [], (configs) => {
+      if (configs && configs.length > 0) {
+        setConfig(configs[0]);
+      }
+    });
 
     // Initial Seeding if empty
     const seedIfEmpty = async () => {
@@ -225,6 +231,7 @@ export default function App() {
       unsubEvents();
       unsubConversations();
       unsubCritiques();
+      unsubConfig();
     };
   }, [user]);
 
@@ -449,7 +456,7 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="max-w-7xl mx-auto"
             >
-              {activeTab === 'dashboard' && <DashboardView transactions={transactions} messages={messages} parishioners={parishioners} config={config} />}
+              {activeTab === 'dashboard' && <DashboardView transactions={transactions} messages={messages} parishioners={parishioners} config={config} events={events} setActiveTab={setActiveTab} />}
               {activeTab === 'messages' && (
                 <MessagesView 
                   messages={messages} 
@@ -490,9 +497,17 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
   const [modalities, setModalities] = useState<string[]>(config?.paymentModalities || []);
   const [newModality, setNewModality] = useState('');
 
+  // Sync modalities state when config changes
+  useEffect(() => {
+    if (config?.paymentModalities) {
+      setModalities(config.paymentModalities);
+    }
+  }, [config?.paymentModalities]);
+
   // Authorized Emails State
   const [authorizedEmails, setAuthorizedEmails] = useState<AuthorizedEmail[]>([]);
   const [newEmail, setNewEmail] = useState('');
+  const [newRole, setNewRole] = useState<'admin' | 'user'>('user');
   const [isAddingEmail, setIsAddingEmail] = useState(false);
 
   // Evolution API State
@@ -563,6 +578,7 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
       const emailLower = newEmail.toLowerCase().trim();
       await firestoreService.setDocument('authorized_emails', emailLower, {
         email: emailLower,
+        role: newRole,
         createdAt: new Date().toISOString()
       });
       setNewEmail('');
@@ -1011,7 +1027,7 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
           <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
             <h4 className="text-xl font-bold mb-6">Autorizar Novos Operadores</h4>
-            <div className="flex gap-4">
+            <div className="flex flex-col md:flex-row gap-4">
               <input 
                 type="email" 
                 value={newEmail}
@@ -1019,21 +1035,29 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
                 placeholder="email@gmail.com"
                 className="flex-1 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
               />
+              <select 
+                value={newRole}
+                onChange={e => setNewRole(e.target.value as 'admin' | 'user')}
+                className="px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none font-bold text-[#5A5A40]"
+              >
+                <option value="user">Operador (User)</option>
+                <option value="admin">Administrador</option>
+              </select>
               <button 
                 onClick={handleAddEmail}
                 disabled={isAddingEmail || !newEmail.includes('@')}
-                className="bg-[#5A5A40] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#4A4A35] transition-all disabled:opacity-50"
+                className="bg-[#5A5A40] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#4A4A35] transition-all disabled:opacity-50 whitespace-nowrap"
               >
-                {isAddingEmail ? 'Adicionando...' : 'Autorizar Email'}
+                {isAddingEmail ? 'Adicionando...' : 'Autorizar Acesso'}
               </button>
             </div>
             <p className="mt-4 text-xs text-gray-400 italic">
-              * Apenas emails autorizados nesta lista (além do administrador mestre) conseguirão acessar as funções da Paróquia.
+              * Administradores podem alterar configurações do sistema. Usuários têm acesso apenas operacional (financeiro/paroquianos).
             </p>
           </div>
 
           <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-gray-50 bg-gray-50/50">
+            <div className="p-6 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
               <h5 className="font-bold text-gray-700">Emails com Acesso Liberado</h5>
             </div>
             <div className="divide-y divide-gray-50">
@@ -1043,7 +1067,15 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
                     <div className="w-8 h-8 bg-emerald-50 rounded-full flex items-center justify-center">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                     </div>
-                    <span className="font-medium text-gray-700 font-mono">{ae.email}</span>
+                    <div className="flex flex-col">
+                      <span className="font-medium text-gray-700 font-mono">{ae.email}</span>
+                      <span className={cn(
+                        "text-[10px] uppercase font-black px-2 py-0.5 rounded w-fit mt-1",
+                        ae.role === 'admin' ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+                      )}>
+                        {ae.role === 'admin' ? 'Administrador' : 'Operador'}
+                      </span>
+                    </div>
                   </div>
                   <button 
                     onClick={() => handleRemoveEmail(ae.email)}
@@ -1262,24 +1294,38 @@ function ChatTestView({ config, getSystemContext }: { config: SystemConfig | nul
   );
 }
 
-function DashboardView({ transactions, messages, parishioners, config }: { transactions: Transaction[], messages: Message[], parishioners: Parishioner[], config: SystemConfig | null }) {
+function DashboardView({ transactions, messages, parishioners, config, events, setActiveTab }: { 
+  transactions: Transaction[], 
+  messages: Message[], 
+  parishioners: Parishioner[], 
+  config: SystemConfig | null, 
+  events: ChurchEvent[],
+  setActiveTab: (tab: 'dashboard' | 'messages' | 'finance' | 'reports' | 'events' | 'admin' | 'chat_test') => void 
+}) {
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+
+  const tithesThisMonth = transactions.filter(t => {
+    const d = new Date(t.date);
+    return t.type === 'tithe' && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+  }).reduce((acc, t) => acc + t.amount, 0);
+
   const stats = [
-    { label: 'Dízimos do Mês', value: `R$ ${transactions.filter(t => t.type === 'tithe').reduce((acc, t) => acc + t.amount, 0).toFixed(2)}`, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Novos Membros', value: parishioners.length || '0', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Mensagens Pendentes', value: messages.filter(m => m.status === 'pending').length || '0', icon: Bell, color: 'text-orange-600', bg: 'bg-orange-50' },
-    { label: 'Eventos em Breve', value: '4', icon: Calendar, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Dízimos do Mês', value: `R$ ${tithesThisMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50', tab: 'finance' as const },
+    { label: 'Total de Membros', value: parishioners.length || '0', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', tab: 'admin' as const },
+    { label: 'Mensagens Pendentes', value: messages.filter(m => m.status === 'pending').length || '0', icon: Bell, color: 'text-orange-600', bg: 'bg-orange-50', tab: 'messages' as const },
+    { label: 'Próximos Eventos', value: events.filter(e => new Date(e.date) >= new Date()).length || '0', icon: Calendar, color: 'text-purple-600', bg: 'bg-purple-50', tab: 'events' as const },
   ];
 
   const chartData = transactions.length > 0 ? transactions.slice(-7).map(t => ({
     date: format(new Date(t.date), 'dd/MM'),
     amount: t.amount
-  })) : [
-    {date: '01/04', amount: 400}, 
-    {date: '02/04', amount: 800},
-    {date: '03/04', amount: 600},
-    {date: '04/04', amount: 1200},
-    {date: '05/04', amount: 900}
-  ];
+  })) : [];
+
+  const upcomingEvents = [...events]
+    .filter(e => new Date(e.date) >= new Date())
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(0, 3);
 
   return (
     <div className="space-y-8">
@@ -1295,25 +1341,23 @@ function DashboardView({ transactions, messages, parishioners, config }: { trans
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: i * 0.1 }}
             key={stat.label} 
-            className="p-6 bg-white rounded-2xl shadow-sm border border-gray-100"
+            onClick={() => setActiveTab(stat.tab)}
+            className="p-6 bg-white rounded-2xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-all group"
           >
-            <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center mb-4", stat.bg)}>
+            <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform", stat.bg)}>
               <stat.icon className={cn("w-6 h-6", stat.color)} />
             </div>
             <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">{stat.label}</p>
-            <h4 className="text-2xl font-bold mt-1">{stat.value}</h4>
+            <h4 className="text-2xl font-bold mt-1 text-gray-800">{stat.value}</h4>
           </motion.div>
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+        <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-all" onClick={() => setActiveTab('finance')}>
           <div className="flex justify-between items-center mb-8">
             <h4 className="text-xl font-bold">Fluxo de Contribuições</h4>
-            <select className="text-sm border-none bg-gray-50 rounded-lg px-3 py-1 outline-none">
-              <option>Últimos 7 dias</option>
-              <option>Este Mês</option>
-            </select>
+            <div className="text-sm text-gray-400 font-medium">Ver Financeiro Completo</div>
           </div>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -1336,21 +1380,23 @@ function DashboardView({ transactions, messages, parishioners, config }: { trans
             <Calendar className="w-5 h-5 text-gray-300" />
           </div>
           <div className="space-y-6">
-            {[
-              { title: 'Missa do Crisma', time: 'Amanhã, 19:00', icon: Bell, color: 'bg-emerald-50 text-emerald-600' },
-              { title: 'Reunião Pastoral', time: 'Sexta, 20:00', icon: Users, color: 'bg-blue-50 text-blue-600' },
-              { title: 'Batizados', time: 'Sábado, 09:00', icon: CheckCircle2, color: 'bg-purple-50 text-purple-600' },
-            ].map((e, i) => (
-              <div key={i} className="flex items-start gap-4 p-4 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer group">
-                <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", e.color)}>
-                  <e.icon className="w-5 h-5" />
+            {upcomingEvents.length === 0 ? (
+              <div className="p-12 text-center text-gray-400 italic">Nenhum evento agendado.</div>
+            ) : (
+              upcomingEvents.map((e, i) => (
+                <div key={i} onClick={() => setActiveTab('events')} className="flex items-start gap-4 p-4 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer group">
+                  <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-blue-50 text-blue-600")}>
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <h5 className="font-semibold text-gray-800 line-clamp-1">{e.title}</h5>
+                    <p className="text-sm text-gray-500">
+                      {format(new Date(e.date), "dd/MM 'às' HH:mm", { locale: ptBR })}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h5 className="font-semibold text-gray-800">{e.title}</h5>
-                  <p className="text-sm text-gray-500">{e.time}</p>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -2237,7 +2283,33 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
   );
 }
 
-function ReportsView({ transactions, parishioners }: any) {
+function ReportsView({ transactions, parishioners }: { transactions: Transaction[], parishioners: Parishioner[] }) {
+  const last3Months = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 2);
+    d.setDate(1);
+    return transactions.filter(t => new Date(t.date) >= d);
+  }, [transactions]);
+
+  const totalTrimestre = last3Months.reduce((acc, t) => acc + t.amount, 0);
+
+  const last6Months = useMemo(() => {
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const label = format(d, 'MMM', { locale: ptBR });
+      const amount = transactions
+        .filter(t => {
+          const td = new Date(t.date);
+          return td.getMonth() === d.getMonth() && td.getFullYear() === d.getFullYear();
+        })
+        .reduce((acc, t) => acc + t.amount, 0);
+      months.push({ month: label, amount });
+    }
+    return months;
+  }, [transactions]);
+
   return (
     <div className="space-y-8">
       <header>
@@ -2248,22 +2320,12 @@ function ReportsView({ transactions, parishioners }: any) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white p-10 rounded-3xl border border-gray-100 shadow-sm flex flex-col">
           <div className="flex justify-between items-center mb-10">
-            <h4 className="text-xl font-bold">Projeção do Dízimo</h4>
-            <select className="bg-gray-50 border-none rounded-xl px-4 py-2 text-sm outline-none font-medium">
-              <option>Anual</option>
-              <option>Semestral</option>
-            </select>
+            <h4 className="text-xl font-bold">Histórico de Contribuições</h4>
+            <div className="text-sm font-medium text-gray-400">Últimos 6 meses</div>
           </div>
           <div className="flex-1 min-h-[300px]">
              <ResponsiveContainer width="100%" height="100%">
-               <LineChart data={[
-                 { month: 'Jan', amount: 4500 },
-                 { month: 'Fev', amount: 5200 },
-                 { month: 'Mar', amount: 4800 },
-                 { month: 'Abr', amount: 6100 },
-                 { month: 'Mai', amount: 5900 },
-                 { month: 'Jun', amount: 7200 },
-               ]}>
+               <LineChart data={last6Months}>
                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#64748B'}} />
                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#64748B'}} />
@@ -2291,16 +2353,16 @@ function ReportsView({ transactions, parishioners }: any) {
 
           <div className="space-y-10 relative z-10">
             <div className="flex justify-between items-end border-b border-white/5 pb-6">
-              <span className="text-gray-400 text-sm font-medium">Receita Consolidada do Trimestre</span>
-              <span className="text-2xl font-mono font-bold">R$ 16.100,00</span>
+              <span className="text-gray-400 text-sm font-medium">Receita Consolidada (90 dias)</span>
+              <span className="text-2xl font-mono font-bold">R$ {totalTrimestre.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
             </div>
             <div className="flex justify-between items-end border-b border-white/5 pb-6">
-              <span className="text-gray-400 text-sm font-medium">Taxa de Conversão Pastoral (IA)</span>
-              <span className="text-2xl font-mono font-bold text-emerald-400">92.5%</span>
+              <span className="text-gray-400 text-sm font-medium">Novos Paroquianos Inscritos</span>
+              <span className="text-2xl font-mono font-bold text-emerald-400">{parishioners.length}</span>
             </div>
             <div className="flex justify-between items-end border-b border-white/5 pb-6">
-              <span className="text-gray-400 text-sm font-medium">Tempo Médio de Atendimento</span>
-              <span className="text-2xl font-mono font-bold">4.2 min</span>
+              <span className="text-gray-400 text-sm font-medium">Lançamentos Processados</span>
+              <span className="text-2xl font-mono font-bold">{transactions.filter((t: Transaction) => t.isProcessed).length}</span>
             </div>
           </div>
 

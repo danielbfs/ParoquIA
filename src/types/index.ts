@@ -104,6 +104,7 @@ export interface UserProfile {
 export interface AuthorizedEmail {
   id?: string;
   email: string;
+  role: 'admin' | 'user';
   addedBy?: string;
   createdAt: string;
 }
