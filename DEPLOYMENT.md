@@ -47,19 +47,13 @@ Preencha as variáveis de ambiente necessárias, especialmente:
 
 ## 4. Inicialização
 
-Crie a pasta para os certificados:
-
-```bash
-mkdir letsencrypt
-touch letsencrypt/acme.json
-chmod 600 letsencrypt/acme.json
-```
-
-Inicie os contêineres:
+Inicie o contêiner:
 
 ```bash
 docker compose up -d --build
 ```
+
+**Importante:** Este projeto assume que você já tem uma rede Docker externa chamada `proxy` onde seu Traefik central está rodando. Caso o nome da sua rede seja diferente, altere a seção `networks` no final do arquivo `docker-compose.yml`.
 
 ## 5. Verificação
 

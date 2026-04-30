@@ -15,6 +15,8 @@ services:
       - VITE_FIREBASE_MESSAGING_SENDER_ID=${VITE_FIREBASE_MESSAGING_SENDER_ID}
       - VITE_FIREBASE_APP_ID=${VITE_FIREBASE_APP_ID}
       - VITE_FIREBASE_DATABASE_ID=${VITE_FIREBASE_DATABASE_ID}
+    networks:
+      - proxy
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.paroquia.rule=Host(`${DOMAIN}`)"
@@ -22,25 +24,6 @@ services:
       - "traefik.http.routers.paroquia.tls.certresolver=myresolver"
       - "traefik.http.services.paroquia.loadbalancer.server.port=3000"
 
-  traefik:
-    image: traefik:v3.0
-    container_name: traefik
-    restart: always
-    command:
-      - "--api.insecure=false"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
-      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.myresolver.acme.email=${EMAIL}"
-      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "./letsencrypt:/letsencrypt"
+networks:
+  proxy:
+    external: true
