@@ -7,8 +7,18 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && 
-             get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin';
+      return isSignedIn() && (
+        request.auth.token.email == 'danielbfs@gmail.com' ||
+        get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    function isAuthorized() {
+      return isSignedIn() && (
+        request.auth.token.email == 'danielbfs@gmail.com' ||
+        exists(/databases/$(database)/documents/authorized_emails/$(request.auth.token.email)) ||
+        get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.isAuthorized == true
+      );
     }
 
     function isValidId(id) {
@@ -28,6 +38,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Proxy for Authorized Emails Management (Admin Only)
+    match /authorized_emails/{email} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     // Connection Test
     match /test/connection {
       allow read: if isSignedIn();
@@ -42,21 +58,21 @@ service cloud.firestore {
 
     // Config Rules
     match /config/{configId} {
-      allow read: if isSignedIn();
+      allow read: if isAuthorized();
       allow write: if isAdmin();
     }
 
     // Parish Rules
     match /parishes/{parishId} {
-      allow read: if isSignedIn();
+      allow read: if isAuthorized();
       allow write: if isAdmin();
     }
 
     // Parishioner Rules
     match /parishioners/{parishionerId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidParishioner(incoming());
-      allow update: if isSignedIn() && (isAdmin() || isValidParishioner(incoming()));
+      allow read: if isAuthorized();
+      allow create: if isAuthorized() && isValidParishioner(incoming());
+      allow update: if isAuthorized() && (isAdmin() || isValidParishioner(incoming()));
       allow delete: if isAdmin();
     }
 
@@ -67,9 +83,9 @@ service cloud.firestore {
 
     // Message Rules
     match /messages/{messageId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidMessage(incoming());
-      allow update: if isSignedIn() && isValidMessage(incoming());
+      allow read: if isAuthorized();
+      allow create: if isAuthorized() && isValidMessage(incoming());
+      allow update: if isAuthorized() && isValidMessage(incoming());
       allow delete: if isAdmin();
     }
 
@@ -83,9 +99,9 @@ service cloud.firestore {
 
     // Conversation Rules
     match /conversations/{convId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidConversation(incoming());
-      allow update: if isSignedIn() && isValidConversation(incoming());
+      allow read: if isAuthorized();
+      allow create: if isAuthorized() && isValidConversation(incoming());
+      allow update: if isAuthorized() && isValidConversation(incoming());
       allow delete: if isAdmin();
     }
 
@@ -97,8 +113,8 @@ service cloud.firestore {
 
     // Critique Rules
     match /critiques/{critiqueId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidCritique(incoming());
+      allow read: if isAuthorized();
+      allow create: if isAuthorized() && isValidCritique(incoming());
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
@@ -111,8 +127,8 @@ service cloud.firestore {
 
     // Transaction Rules
     match /transactions/{transactionId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidTransaction(incoming());
+      allow read: if isAuthorized();
+      allow create: if isAuthorized() && isValidTransaction(incoming());
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
@@ -125,9 +141,9 @@ service cloud.firestore {
 
     // Event Rules
     match /events/{eventId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidEvent(incoming());
-      allow update: if isSignedIn() && (isAdmin() || isValidEvent(incoming()));
+      allow read: if isAuthorized();
+      allow create: if isAuthorized() && isValidEvent(incoming());
+      allow update: if isAuthorized() && (isAdmin() || isValidEvent(incoming()));
       allow delete: if isAdmin();
     }
 

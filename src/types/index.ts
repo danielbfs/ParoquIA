@@ -69,11 +69,14 @@ export interface Critique {
 
 export interface Transaction {
   id?: string;
-  type: 'tithe' | 'offering';
+  type: 'tithe' | 'offering' | 'donation' | 'event';
   amount: number;
   date: string;
   parishionerId?: string;
   parishionerName?: string;
+  modality?: string;
+  isProcessed?: boolean;
+  attachmentUrl?: string;
   notes?: string;
 }
 
@@ -92,8 +95,17 @@ export interface Event {
 export interface UserProfile {
   id?: string;
   email: string;
-  role: 'admin' | 'staff';
+  role: 'admin' | 'user';
   name: string;
+  photoURL?: string;
+  isAuthorized?: boolean;
+}
+
+export interface AuthorizedEmail {
+  id?: string;
+  email: string;
+  addedBy?: string;
+  createdAt: string;
 }
 
 export interface SystemConfig {
@@ -104,4 +116,5 @@ export interface SystemConfig {
   evolutionApiKey?: string;
   evolutionInstanceName?: string;
   updatedAt: string;
+  paymentModalities?: string[];
 }

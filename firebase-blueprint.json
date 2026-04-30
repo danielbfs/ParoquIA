@@ -47,11 +47,14 @@
       "description": "Financial records of tithes and offerings",
       "type": "object",
       "properties": {
-        "type": { "type": "string", "enum": ["tithe", "offering"] },
+        "type": { "type": "string", "enum": ["tithe", "offering", "donation", "event"] },
         "amount": { "type": "number" },
         "date": { "type": "string", "format": "date-time" },
         "parishionerId": { "type": "string" },
         "parishionerName": { "type": "string" },
+        "modality": { "type": "string" },
+        "isProcessed": { "type": "boolean" },
+        "attachmentUrl": { "type": "string" },
         "notes": { "type": "string" }
       },
       "required": ["type", "amount", "date"]
@@ -74,10 +77,23 @@
       "type": "object",
       "properties": {
         "email": { "type": "string" },
-        "role": { "type": "string", "enum": ["admin", "staff"] },
-        "name": { "type": "string" }
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "name": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "isAuthorized": { "type": "boolean" }
       },
       "required": ["email", "role"]
+    },
+    "AuthorizedEmail": {
+      "title": "AuthorizedEmail",
+      "description": "Whitelist of emails allowed to use the system",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "addedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email"]
     },
     "SystemConfig": {
       "title": "SystemConfig",
@@ -86,7 +102,11 @@
       "properties": {
         "aiPrompt": { "type": "string" },
         "parishName": { "type": "string" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "paymentModalities": { 
+          "type": "array",
+          "items": { "type": "string" }
+        }
       }
     },
     "ConversationMeta": {
@@ -122,6 +142,10 @@
     "profiles": {
       "schema": "UserProfile",
       "description": "User roles and permissions"
+    },
+    "authorized_emails": {
+      "schema": "AuthorizedEmail",
+      "description": "Whitelist of authorized emails"
     },
     "config": {
       "schema": "SystemConfig",

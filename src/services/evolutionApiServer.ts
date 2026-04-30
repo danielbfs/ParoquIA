@@ -2,7 +2,8 @@ import makeWASocket, {
   DisconnectReason, 
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
-  WASocket
+  WASocket,
+  downloadMediaMessage
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import path from 'path';
@@ -22,6 +23,12 @@ interface Instance {
 
 const instances = new Map<string, Instance>();
 
+// Ensure media dir exists
+const mediaDir = path.join(process.cwd(), 'dist', 'media');
+if (!fs.existsSync(mediaDir)) {
+  fs.mkdirSync(mediaDir, { recursive: true });
+}
+
 export const initEvolutionApi = (app: any) => {
   // Ensure instances dir exists
   const sessionsDir = path.join(process.cwd(), 'instances');
@@ -32,8 +39,11 @@ export const initEvolutionApi = (app: any) => {
   // Middleware for API key
   app.use((req: any, res: any, next: any) => {
     // Only protect paths starting with /api/evolution
-    if (req.path.startsWith('/api/evolution/instance') || req.path.startsWith('/api/evolution/webhook')) {
+    if (req.path.startsWith('/api/evolution/instance') || 
+        req.path.startsWith('/api/evolution/webhook') ||
+        req.path.startsWith('/api/evolution/message')) {
       const apiKey = req.headers.apikey;
+      if (apiKey === 'INTERNAL') return next();
       if (!apiKey || apiKey.length < 5) {
         return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
       }
@@ -103,6 +113,53 @@ export const initEvolutionApi = (app: any) => {
 
     return instance;
   };
+
+  app.post('/api/evolution/message/sendText/:name', async (req: any, res: any) => {
+    const instance = instances.get(req.params.name);
+    if (!instance || !instance.socket) return res.status(404).json({ error: 'Instance not found/ready' });
+    
+    const { number, text } = req.body;
+    if (!number || !text) return res.status(400).json({ error: 'Number and text required' });
+
+    try {
+      const jid = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
+      await instance.socket.sendMessage(jid, { text });
+      res.json({ status: 'SUCCESS' });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/evolution/message/downloadMedia/:name', async (req: any, res: any) => {
+    const instance = instances.get(req.params.name);
+    if (!instance || !instance.socket) return res.status(404).json({ error: 'Instance not found/ready' });
+    
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'Message object required' });
+
+    try {
+      const buffer = await downloadMediaMessage(
+        message,
+        'buffer',
+        {},
+        { 
+          logger,
+          reuploadRequest: instance.socket.updateMediaMessage
+        }
+      );
+
+      const msgId = message.key.id;
+      const fileName = `${msgId}.jpg`; // Defaulting to jpg for simplicity, can be improved
+      const filePath = path.join(mediaDir, fileName);
+      
+      fs.writeFileSync(filePath, buffer);
+      
+      res.json({ status: 'SUCCESS', url: `/media/${fileName}` });
+    } catch (e: any) {
+      console.error('Download Media Error:', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   // Endpoints using prefix /api/evolution
   app.get('/api/evolution/instance/fetchInstances', (req: any, res: any) => {

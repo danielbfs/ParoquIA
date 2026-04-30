@@ -26,7 +26,9 @@ import {
   ThumbsDown,
   Pause,
   Play,
-  Bot
+  Bot,
+  Check,
+  Paperclip
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -34,7 +36,7 @@ import { firestoreService } from './services/firestoreService';
 import { generateChatResponse } from './services/geminiService';
 import { evolutionService } from './services/evolutionService';
 import { auth, signInWithGoogle } from './lib/firebase';
-import { Message, Transaction, Parishioner, Event as ChurchEvent, UserProfile, SystemConfig, ConversationMeta, Critique } from './types';
+import { Message, Transaction, Parishioner, Event as ChurchEvent, UserProfile, SystemConfig, ConversationMeta, Critique, AuthorizedEmail } from './types';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
   BarChart, 
@@ -96,33 +98,81 @@ export default function App() {
       setUser(u);
       if (u) {
         // Fetch user profile by ID (UID)
-        const profiles = await firestoreService.getCollection<UserProfile>('profiles');
-        let userProfile = profiles?.find(p => p.id === u.uid);
-        
-        if (!userProfile) {
-          const isFirst = !profiles || profiles.length === 0;
-          const newProfile = { 
-            email: u.email!, 
-            role: isFirst ? 'admin' : 'staff', 
-            name: u.displayName || 'Usuário' 
-          };
-          await firestoreService.setDocument('profiles', u.uid, newProfile);
-          userProfile = { ...newProfile, id: u.uid } as UserProfile;
-        }
-        setProfile(userProfile);
+        try {
+          const profiles = await firestoreService.getCollection<UserProfile>('profiles');
+          let userProfile = profiles?.find(p => p.id === u.uid);
+          
+          if (!userProfile) {
+            // Check if this is the bootstrap admin email
+            const isBootstrapAdmin = u.email === 'danielbfs@gmail.com';
+            
+            // Check if email is in authorized list
+            let authorized = isBootstrapAdmin;
+            if (!authorized) {
+              const authEmails = await firestoreService.getCollection<AuthorizedEmail>('authorized_emails');
+              authorized = authEmails?.some(ae => ae.email.toLowerCase() === u.email?.toLowerCase()) || false;
+            }
 
-        // Fetch System Config
-        const configs = await firestoreService.getCollection<SystemConfig>('config');
-        if (configs && configs.length > 0) {
-          setConfig(configs[0]);
-        } else if (userProfile.role === 'admin') {
-          const defConfig = { 
-            parishName: 'Paróquia Central', 
-            aiPrompt: 'Você é um assistente paroquial bondoso...', 
-            updatedAt: new Date().toISOString() 
-          };
-          const cid = await firestoreService.addDocument('config', defConfig);
-          setConfig({ ...defConfig, id: cid } as SystemConfig);
+            const newProfile: UserProfile = { 
+              email: u.email!, 
+              role: isBootstrapAdmin ? 'admin' : 'user', 
+              name: u.displayName || 'Usuário',
+              photoURL: u.photoURL || undefined,
+              isAuthorized: authorized
+            };
+            await firestoreService.setDocument('profiles', u.uid, newProfile);
+            userProfile = { ...newProfile, id: u.uid };
+          } else {
+            // Update profile info if changed (name/photo)
+            if (userProfile.name !== u.displayName || userProfile.photoURL !== u.photoURL) {
+              const updates: Partial<UserProfile> = {
+                name: u.displayName || userProfile.name,
+                photoURL: u.photoURL || userProfile.photoURL
+              };
+              await firestoreService.updateDocument('profiles', u.uid, updates);
+              userProfile = { ...userProfile, ...updates };
+            }
+
+            // Force admin if bootstrap email
+            if (u.email === 'danielbfs@gmail.com' && (userProfile.role !== 'admin' || !userProfile.isAuthorized)) {
+              const forceUpdates: Partial<UserProfile> = { role: 'admin', isAuthorized: true };
+              await firestoreService.updateDocument('profiles', u.uid, forceUpdates);
+              userProfile = { ...userProfile, ...forceUpdates };
+            }
+
+            // Re-verify authorization for regular users
+            if (!userProfile.isAuthorized) {
+              const authEmails = await firestoreService.getCollection<AuthorizedEmail>('authorized_emails');
+              const isWhitelisted = authEmails?.some(ae => ae.email.toLowerCase() === u.email?.toLowerCase()) || false;
+              
+              if (isWhitelisted) {
+                await firestoreService.updateDocument('profiles', u.uid, { isAuthorized: true });
+                userProfile.isAuthorized = true;
+              }
+            }
+          }
+          setProfile(userProfile);
+          if (userProfile.isAuthorized || userProfile.role === 'admin') {
+            const configs = await firestoreService.getCollection<SystemConfig>('config');
+            if (configs && configs.length > 0) {
+              setConfig(configs[0]);
+            } else if (userProfile.role === 'admin') {
+              const defConfig: Partial<SystemConfig> = { 
+                parishName: 'Paróquia Central', 
+                aiPrompt: 'Você é o ParoquIA, assistente da secretaria paroquial. Sua missão é acolher os fiéis e organizar informações. \n\n' +
+                          'REGRAS DE FINANÇAS:\n' +
+                          '1. Sempre que identificar um comprovante ou conversa sobre dinheiro, identifique o valor e o paroquiano.\n' +
+                          '2. PERGUNTE EDUCIDAMENTE a modalidade (Dízimo, Oferta ou algum Evento específico da lista) se não estiver claro.\n' +
+                          '3. Se houver um anexo (imagem), mencione que o anexo foi recebido.',
+                paymentModalities: ['Dízimo', 'Oferta', 'Festa do Padroeiro', 'Encontro de Casais'],
+                updatedAt: new Date().toISOString() 
+              };
+              const cid = await firestoreService.addDocument('config', defConfig);
+              setConfig({ ...defConfig, id: cid } as SystemConfig);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching profile/config:", error);
         }
       }
       setLoading(false);
@@ -131,7 +181,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !profile?.isAuthorized) return;
 
     // Real-time subscriptions
     const unsubMessages = firestoreService.subscribeCollection<Message>('messages', [orderBy('createdAt', 'desc')], setMessages);
@@ -252,6 +302,33 @@ export default function App() {
         </button>
         
         <p className="mt-8 text-[10px] text-gray-400 uppercase tracking-widest font-bold">Uso restrito a secretarias e pastores</p>
+      </motion.div>
+    </div>
+  );
+  
+  if (user && !profile?.isAuthorized) return (
+    <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#F8F9FA] p-6 text-center">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-md bg-white p-12 rounded-[2rem] shadow-2xl border border-gray-100"
+      >
+        <div className="w-20 h-20 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-8">
+          <Clock className="text-amber-500 w-10 h-10" />
+        </div>
+        <h1 className="text-3xl font-serif font-bold text-gray-900 mb-4">Acesso Pendente</h1>
+        <p className="text-gray-500 mb-8 leading-relaxed">
+          Seu email (<strong>{user.email}</strong>) ainda não foi autorizado para acessar o sistema. 
+          Entre em contato com o administrador da paróquia.
+        </p>
+        
+        <button 
+          onClick={() => auth.signOut()}
+          className="w-full border-2 border-gray-100 text-gray-500 py-4 rounded-xl font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
+        >
+          <X className="w-4 h-4" />
+          Sair do Sistema
+        </button>
       </motion.div>
     </div>
   );
@@ -384,7 +461,7 @@ export default function App() {
                   isAnalyzing={isAnalyzing}
                 />
               )}
-              {activeTab === 'finance' && <FinanceView transactions={transactions} />}
+              {activeTab === 'finance' && <FinanceView transactions={transactions} config={config} />}
               {activeTab === 'events' && <EventsView events={events} />}
               {activeTab === 'reports' && <ReportsView transactions={transactions} parishioners={parishioners} />}
               {activeTab === 'chat_test' && <ChatTestView config={config} getSystemContext={getSystemMemory} />}
@@ -405,10 +482,19 @@ export default function App() {
 }
 
 function AdminView({ config, setConfig, parishioners, critiques }: { config: SystemConfig | null, setConfig: any, parishioners: Parishioner[], critiques: Critique[] }) {
-  const [activeAdminTab, setActiveAdminTab] = useState<'general' | 'evolution' | 'critiques'>('general');
+  const [activeAdminTab, setActiveAdminTab] = useState<'general' | 'evolution' | 'critiques' | 'users'>('general');
   const [prompt, setPrompt] = useState(config?.aiPrompt || '');
   const [parishName, setParishName] = useState(config?.parishName || '');
   
+  // Modalities management
+  const [modalities, setModalities] = useState<string[]>(config?.paymentModalities || []);
+  const [newModality, setNewModality] = useState('');
+
+  // Authorized Emails State
+  const [authorizedEmails, setAuthorizedEmails] = useState<AuthorizedEmail[]>([]);
+  const [newEmail, setNewEmail] = useState('');
+  const [isAddingEmail, setIsAddingEmail] = useState(false);
+
   // Evolution API State
   const defaultUrl = typeof window !== 'undefined' ? window.location.origin : '';
   const [apiUrl, setApiUrl] = useState(config?.evolutionApiUrl || defaultUrl);
@@ -435,7 +521,68 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
     if (activeAdminTab === 'evolution' && apiUrl && apiKey) {
       checkEvolutionStatus();
     }
+    if (activeAdminTab === 'users') {
+      fetchAuthorizedEmails();
+    }
   }, [activeAdminTab]);
+
+  const handleUpdateModalities = async (newList: string[]) => {
+    if (!config?.id) return;
+    try {
+      await firestoreService.updateDocument('config', config.id, {
+        paymentModalities: newList,
+        updatedAt: new Date().toISOString()
+      });
+      setModalities(newList);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleAddModality = () => {
+    if (!newModality.trim() || modalities.includes(newModality.trim())) return;
+    const newList = [...modalities, newModality.trim()];
+    handleUpdateModalities(newList);
+    setNewModality('');
+  };
+
+  const handleRemoveModality = (m: string) => {
+    const newList = modalities.filter(item => item !== m);
+    handleUpdateModalities(newList);
+  };
+
+  const fetchAuthorizedEmails = async () => {
+    const emails = await firestoreService.getCollection<AuthorizedEmail>('authorized_emails');
+    setAuthorizedEmails(emails || []);
+  };
+
+  const handleAddEmail = async () => {
+    if (!newEmail.trim() || !newEmail.includes('@')) return;
+    setIsAddingEmail(true);
+    try {
+      const emailLower = newEmail.toLowerCase().trim();
+      await firestoreService.setDocument('authorized_emails', emailLower, {
+        email: emailLower,
+        createdAt: new Date().toISOString()
+      });
+      setNewEmail('');
+      await fetchAuthorizedEmails();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsAddingEmail(false);
+    }
+  };
+
+  const handleRemoveEmail = async (email: string) => {
+    if (!confirm(`Remover acesso de ${email}?`)) return;
+    try {
+      await firestoreService.deleteDocument('authorized_emails', email);
+      await fetchAuthorizedEmails();
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const checkEvolutionStatus = async () => {
     if (!apiUrl || !apiKey) return;
@@ -544,6 +691,15 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
             WhatsApp (Evolution)
           </button>
           <button 
+            onClick={() => setActiveAdminTab('users')}
+            className={cn(
+              "px-6 py-2 rounded-xl font-bold text-sm transition-all",
+              activeAdminTab === 'users' ? "bg-[#5A5A40] text-white shadow-lg shadow-[#5A5A40]/20" : "text-gray-400 hover:text-gray-600"
+            )}
+          >
+            Acessos
+          </button>
+          <button 
             onClick={() => setActiveAdminTab('critiques')}
             className={cn(
               "px-6 py-2 rounded-xl font-bold text-sm transition-all",
@@ -613,9 +769,43 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
                   <span className="px-3 py-1 bg-[#5A5A40] rounded-full text-[10px] font-black uppercase">Host/Admin</span>
                 </div>
               </div>
-              <button className="w-full mt-8 border border-white/10 py-4 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-white/5 transition-colors">
+              <button 
+                onClick={() => setActiveAdminTab('users')}
+                className="w-full mt-8 border border-white/10 py-4 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-white/5 transition-colors"
+              >
                 Gerenciar Operadores
               </button>
+            </div>
+
+            <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+              <h4 className="text-xl font-bold mb-4">Modalidades de Pagamento / Eventos</h4>
+              <p className="text-sm text-gray-500 mb-6 font-serif">Defina os tipos de eventos para os quais a paróquia recebe pagamentos (ex: Festa do Padroeiro, Encontro de Casais).</p>
+              
+              <div className="flex gap-4 mb-6">
+                <input 
+                  type="text" 
+                  value={newModality}
+                  onChange={e => setNewModality(e.target.value)}
+                  placeholder="Nova modalidade..."
+                  className="flex-1 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none"
+                />
+                <button 
+                  onClick={handleAddModality}
+                  className="bg-[#5A5A40] text-white px-8 py-3 rounded-xl font-bold"
+                >
+                  Adicionar
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {modalities.map(m => (
+                  <div key={m} className="bg-gray-50 border border-gray-100 px-4 py-2 rounded-lg flex items-center gap-3">
+                    <span className="text-sm font-bold text-gray-700">{m}</span>
+                    <button onClick={() => handleRemoveModality(m)} className="text-red-300 hover:text-red-500 font-bold"><X size={14}/></button>
+                  </div>
+                ))}
+                {modalities.length === 0 && <span className="text-gray-400 italic text-sm">Nenhuma modalidade cadastrada.</span>}
+              </div>
             </div>
 
             <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden text-center flex flex-col items-center justify-center py-12">
@@ -815,6 +1005,60 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      ) : activeAdminTab === 'users' ? (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+            <h4 className="text-xl font-bold mb-6">Autorizar Novos Operadores</h4>
+            <div className="flex gap-4">
+              <input 
+                type="email" 
+                value={newEmail}
+                onChange={e => setNewEmail(e.target.value)}
+                placeholder="email@gmail.com"
+                className="flex-1 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+              />
+              <button 
+                onClick={handleAddEmail}
+                disabled={isAddingEmail || !newEmail.includes('@')}
+                className="bg-[#5A5A40] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#4A4A35] transition-all disabled:opacity-50"
+              >
+                {isAddingEmail ? 'Adicionando...' : 'Autorizar Email'}
+              </button>
+            </div>
+            <p className="mt-4 text-xs text-gray-400 italic">
+              * Apenas emails autorizados nesta lista (além do administrador mestre) conseguirão acessar as funções da Paróquia.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-gray-50 bg-gray-50/50">
+              <h5 className="font-bold text-gray-700">Emails com Acesso Liberado</h5>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {authorizedEmails.map((ae) => (
+                <div key={ae.email} className="p-6 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-emerald-50 rounded-full flex items-center justify-center">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    </div>
+                    <span className="font-medium text-gray-700 font-mono">{ae.email}</span>
+                  </div>
+                  <button 
+                    onClick={() => handleRemoveEmail(ae.email)}
+                    className="p-2 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              ))}
+              {authorizedEmails.length === 0 && (
+                <div className="p-12 text-center text-gray-400">
+                  Nenhum email autorizado adicional. Apenas o administrador mestre tem acesso.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ) : (
@@ -1362,18 +1606,37 @@ function MessagesView({
   );
 }
 
-function FinanceView({ transactions }: { transactions: Transaction[] }) {
+function FinanceView({ transactions, config }: { transactions: Transaction[], config: SystemConfig | null }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newTx, setNewTx] = useState({ type: 'tithe' as 'tithe' | 'offering', amount: 0, parishionerName: '', date: new Date().toISOString() });
+  const [newTx, setNewTx] = useState({ 
+    type: 'tithe' as Transaction['type'], 
+    amount: 0, 
+    parishionerName: '', 
+    date: new Date().toISOString(),
+    modality: '',
+    attachmentUrl: ''
+  });
 
   const handleAdd = async () => {
     if (newTx.amount <= 0 || !newTx.parishionerName) return;
     await firestoreService.addDocument('transactions', {
       ...newTx,
-      amount: Number(newTx.amount)
+      amount: Number(newTx.amount),
+      isProcessed: false
     });
     setIsModalOpen(false);
-    setNewTx({ type: 'tithe', amount: 0, parishionerName: '', date: new Date().toISOString() });
+    setNewTx({ 
+      type: 'tithe', 
+      amount: 0, 
+      parishionerName: '', 
+      date: new Date().toISOString(),
+      modality: '',
+      attachmentUrl: ''
+    });
+  };
+
+  const toggleProcessed = async (txId: string, current: boolean) => {
+    await firestoreService.updateDocument('transactions', txId, { isProcessed: !current });
   };
 
   return (
@@ -1381,7 +1644,7 @@ function FinanceView({ transactions }: { transactions: Transaction[] }) {
       <div className="flex justify-between items-end">
         <header>
           <h3 className="text-3xl font-serif font-bold text-gray-900">Financeiro Pastoral</h3>
-          <p className="text-gray-500">Acompanhamento de dízimos e ofertas dominicais.</p>
+          <p className="text-gray-500">Acompanhamento de dízimos, ofertas e eventos.</p>
         </header>
         <button 
           onClick={() => setIsModalOpen(true)}
@@ -1396,21 +1659,39 @@ function FinanceView({ transactions }: { transactions: Transaction[] }) {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50/50">
+                <th className="px-8 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest w-16 text-center">OK</th>
                 <th className="px-8 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Inscrito</th>
                 <th className="px-8 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Modalidade</th>
                 <th className="px-8 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Data</th>
                 <th className="px-8 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Montante</th>
+                <th className="px-8 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">Anexo</th>
                 <th className="px-8 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {transactions.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-8 py-16 text-center text-gray-400 italic font-medium">Nenhum registro financeiro encontrado no sistema.</td>
+                  <td colSpan={7} className="px-8 py-16 text-center text-gray-400 italic font-medium">Nenhum registro financeiro encontrado no sistema.</td>
                 </tr>
               ) : (
                 transactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-gray-50 transition-colors group">
+                  <tr key={tx.id} className={cn(
+                    "hover:bg-gray-50 transition-colors group",
+                    tx.isProcessed && "bg-gray-50/50 opacity-60"
+                  )}>
+                    <td className="px-8 py-5 text-center">
+                      <button 
+                        onClick={() => tx.id && toggleProcessed(tx.id, !!tx.isProcessed)}
+                        className={cn(
+                          "w-5 h-5 rounded border transition-all flex items-center justify-center",
+                          tx.isProcessed 
+                            ? "bg-[#5A5A40] border-[#5A5A40] text-white" 
+                            : "bg-white border-gray-300 hover:border-[#5A5A40]"
+                        )}
+                      >
+                        {tx.isProcessed && <Check className="w-3 h-3" />}
+                      </button>
+                    </td>
                     <td className="px-8 py-5">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-[#F3F4F1] flex items-center justify-center font-bold text-xs text-[#5A5A40]">
@@ -1420,12 +1701,17 @@ function FinanceView({ transactions }: { transactions: Transaction[] }) {
                       </div>
                     </td>
                     <td className="px-8 py-5">
-                      <span className={cn(
-                        "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tight",
-                        tx.type === 'tithe' ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
-                      )}>
-                        {tx.type === 'tithe' ? 'Dízimo' : 'Oferta'}
-                      </span>
+                      <div className="flex flex-col">
+                        <span className={cn(
+                          "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tight w-fit",
+                          tx.type === 'tithe' ? "bg-emerald-100 text-emerald-700" : 
+                          tx.type === 'event' ? "bg-purple-100 text-purple-700" :
+                          "bg-blue-100 text-blue-700"
+                        )}>
+                          {tx.type === 'tithe' ? 'Dízimo' : tx.type === 'event' ? 'Evento' : 'Oferta'}
+                        </span>
+                        {tx.modality && <span className="text-[9px] text-gray-400 mt-1 font-bold">{tx.modality}</span>}
+                      </div>
                     </td>
                     <td className="px-8 py-5 text-sm text-gray-500 font-medium">
                       {format(new Date(tx.date), "dd/MM/yyyy", { locale: ptBR })}
@@ -1433,7 +1719,21 @@ function FinanceView({ transactions }: { transactions: Transaction[] }) {
                     <td className="px-8 py-5 text-right font-mono font-bold text-gray-900">
                       R$ {tx.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="px-8 py-5 text-right">
+                    <td className="px-8 py-5 text-center">
+                      {tx.attachmentUrl ? (
+                        <a 
+                          href={tx.attachmentUrl} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="text-[#5A5A40] hover:scale-110 transition-transform inline-block"
+                        >
+                          <Paperclip className="w-4 h-4" />
+                        </a>
+                      ) : (
+                        <span className="text-gray-200"><Paperclip className="w-4 h-4" /></span>
+                      )}
+                    </td>
+                    <td className="px-8 py-4 text-right">
                       <button className="p-2 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white rounded-lg border border-transparent hover:border-gray-200">
                         <MoreVertical className="w-4 h-4 text-gray-400" />
                       </button>
@@ -1484,6 +1784,7 @@ function FinanceView({ transactions }: { transactions: Transaction[] }) {
                     >
                       <option value="tithe">Dízimo</option>
                       <option value="offering">Oferta</option>
+                      <option value="event">Evento</option>
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -1496,6 +1797,33 @@ function FinanceView({ transactions }: { transactions: Transaction[] }) {
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10 transition-all font-mono font-bold"
                     />
                   </div>
+                </div>
+
+                {newTx.type === 'event' && (
+                  <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Modalidade / Evento</label>
+                    <select 
+                      value={newTx.modality}
+                      onChange={e => setNewTx({...newTx, modality: e.target.value})}
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10 transition-all font-medium appearance-none"
+                    >
+                      <option value="">Selecione...</option>
+                      {config?.paymentModalities?.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Link do Comprovante</label>
+                  <input 
+                    type="text" 
+                    value={newTx.attachmentUrl}
+                    onChange={e => setNewTx({...newTx, attachmentUrl: e.target.value})}
+                    placeholder="URL do arquivo recebido" 
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10 transition-all font-medium"
+                  />
                 </div>
 
                 <button 
