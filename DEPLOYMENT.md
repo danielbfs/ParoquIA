@@ -53,7 +53,7 @@ Inicie o contêiner:
 docker compose up -d --build
 ```
 
-**Importante:** Este projeto utiliza a porta `3000` via `127.0.0.1`. Certifique-se de que o seu Traefik central está configurado para ler os labels do Docker e alcançar o serviço através dessa porta.
+**Importante:** Este projeto utiliza a porta `3001` via `127.0.0.1`. Certifique-se de que o seu Traefik central está configurado para ler os labels do Docker e alcançar o serviço através dessa porta.
 
 ## 5. Verificação
 
