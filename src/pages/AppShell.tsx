@@ -39,6 +39,7 @@ import { auth, signInWithGoogle, storage } from '../lib/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Message, Transaction, Parishioner, Event as ChurchEvent, UserProfile, SystemConfig, ConversationMeta, Critique, AuthorizedEmail } from '../types';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { useNavigate } from 'react-router-dom';
 import { 
   BarChart, 
   Bar, 
@@ -78,7 +79,13 @@ const MOCK_MESSAGES: Message[] = [
 ];
 
 export default function AppShell() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'messages' | 'finance' | 'reports' | 'events' | 'admin' | 'chat_test'>('dashboard');
+
+  const handleLogout = async () => {
+    await auth.signOut();
+    navigate('/');
+  };
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -331,7 +338,7 @@ export default function AppShell() {
         </p>
         
         <button 
-          onClick={() => auth.signOut()}
+          onClick={handleLogout}
           className="w-full border-2 border-gray-100 text-gray-500 py-4 rounded-xl font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
         >
           <X className="w-4 h-4" />
@@ -408,7 +415,7 @@ export default function AppShell() {
             </div>
           )}
           <button 
-            onClick={() => auth.signOut()}
+            onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
           >
             <X className="w-5 h-5 shrink-0" />
