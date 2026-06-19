@@ -4,13 +4,29 @@ ParoquIA é um sistema de gestão e automação para paróquias, integrando inte
 
 ## 🚀 Funcionalidades
 
+### Painel interno (já implementado)
+
 - **Dashboard Pastoral:** Visão geral de transações, mensagens pendentes e próximos eventos.
 - **Gestão de Mensagens:** Histórico de conversas agrupado por remetente com análise de sentimento e categoria via IA.
-- **Intervenção Humana:** Possibilidade de pausar a IA para resposta manual e retomar o atendimento automatizado.
+- **Intervenção Humana:** Possibilidade de pausar a IA por conversa para resposta manual e retomar o atendimento automatizado.
 - **Treinamento Continuado:** Sistema de críticas e correções para as respostas da IA, armazenadas para futuras melhorias.
-- **Financeiro:** Gestão de dízimos e doações integradas.
-- **Eventos:** Calendário paroquial e agendamentos.
-- **Integração WhatsApp:** Conexão via Evolution API para automação real.
+- **Financeiro:** Gestão de dízimos, ofertas e doações, com pré-registro automático de pagamentos detectados pela IA no WhatsApp.
+- **Eventos:** Calendário paroquial e agendamentos, incluindo eventos recorrentes.
+- **Relatórios:** Análises sobre transações e paroquianos.
+- **Teste de Chat:** Ambiente para validar respostas da IA antes de produção.
+- **Administração (admin):** Configurações gerais, conexão WhatsApp (Evolution), gestão de usuários/papéis e críticas de treinamento.
+- **Integração WhatsApp:** Conexão via Evolution API com webhook que recebe, analisa, responde e registra automaticamente.
+- **Autenticação e papéis:** Login Google (Firebase Auth) com autorização por e-mail e papéis `admin`/`user`. Somente o admin cadastra pessoas e define papéis.
+
+### Em implantação 🛠️
+
+Próxima evolução (ver design em [`docs/superpowers/specs/2026-06-19-landing-page-e-config-design.md`](docs/superpowers/specs/2026-06-19-landing-page-e-config-design.md)):
+
+- **Landing page pública (`/`):** página institucional da paróquia, com nome e imagem (configurados na Administração), informações de contato, formulário "Enviar mensagem" (envio por e-mail via SMTP), seção de próximos eventos (data, local, período e imagem) e um calendário mensal para os fiéis se programarem.
+- **Botão "Entrar":** acesso ao painel interno (`/app`) a partir da landing.
+- **Roteamento:** `react-router-dom` separando a página pública (`/`) do painel interno (`/app`).
+- **Imagens:** upload da imagem da paróquia e de imagens de eventos via Firebase Storage.
+- **Configuração externalizada:** banco de dados e IA configuráveis por variáveis de ambiente (sem valores fixos no código); IA com provedor/modelo ajustáveis (`AI_PROVIDER`, `AI_MODEL`, `AI_API_KEY`).
 
 ## 🛠️ Tecnologias
 
