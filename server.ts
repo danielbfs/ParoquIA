@@ -156,6 +156,100 @@ async function startServer() {
     }
   });
 
+  // GET /api/public/landing: Busca a configuração da paróquia e eventos cadastrados
+  app.get("/api/public/landing", async (req, res) => {
+    try {
+      const { adminDb } = await import("./src/lib/firebase-server");
+
+      // 1. Busca a configuração da paróquia na coleção 'config' (pegando o primeiro documento)
+      const configSnap = await adminDb.collection("config").get();
+      const config = configSnap.docs[0]?.data() || null;
+
+      // 2. Busca os eventos cadastrados na coleção 'events'
+      const eventsSnap = await adminDb.collection("events").get();
+      const events = eventsSnap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      res.status(200).json({
+        config,
+        events
+      });
+    } catch (error) {
+      console.error("Error in GET /api/public/landing:", error);
+      res.status(500).json({ error: "Erro ao buscar as informações da página inicial." });
+    }
+  });
+
+  // POST /api/contact: Recebe as informações do formulário de contato e envia e-mail via nodemailer
+  app.post("/api/contact", async (req, res) => {
+    try {
+      const { name, email, phone, message } = req.body;
+
+      // Validação dos campos obrigatórios
+      if (!name || !email || !message) {
+        return res.status(400).json({ error: "Os campos Nome, E-mail e Mensagem são obrigatórios." });
+      }
+
+      const smtpHost = process.env.SMTP_HOST;
+      const smtpPortStr = process.env.SMTP_PORT;
+      const smtpPort = smtpPortStr ? parseInt(smtpPortStr, 10) : 587;
+      const smtpUser = process.env.SMTP_USER;
+      const smtpPass = process.env.SMTP_PASS;
+      const smtpFrom = process.env.SMTP_FROM || smtpUser;
+      const contactEmailTo = process.env.CONTACT_EMAIL_TO;
+
+      // Verifica se as credenciais do SMTP estão preenchidas nas variáveis de ambiente
+      const isSmtpConfigured = !!(smtpHost && smtpUser && smtpPass && contactEmailTo);
+
+      if (isSmtpConfigured) {
+        const nodemailer = await import("nodemailer");
+        const transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port: smtpPort,
+          secure: smtpPort === 465,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass
+          }
+        });
+
+        const mailOptions = {
+          from: smtpFrom,
+          to: contactEmailTo,
+          subject: `Novo contato de ${name}`,
+          text: `Nome: ${name}\nE-mail: ${email}\nTelefone: ${phone || "Não informado"}\nMensagem: ${message}`,
+          html: `
+            <h3>Novo contato recebido do formulário de contato</h3>
+            <p><strong>Nome:</strong> ${name}</p>
+            <p><strong>E-mail:</strong> ${email}</p>
+            <p><strong>Telefone:</strong> ${phone || "Não informado"}</p>
+            <p><strong>Mensagem:</strong></p>
+            <p>${message.replace(/\n/g, "<br>")}</p>
+          `
+        };
+
+        await transporter.sendMail(mailOptions);
+        console.log(`Contato enviado com sucesso por e-mail para ${contactEmailTo}`);
+      } else {
+        // Se as credenciais do SMTP não estiverem preenchidas, simula o envio de e-mail (para dev local)
+        console.log("SMTP não configurado. Simulando envio de e-mail com os dados:", {
+          name,
+          email,
+          phone,
+          message,
+          contactEmailTo
+        });
+      }
+
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      console.error("Error in POST /api/contact:", error);
+      res.status(500).json({ error: error.message || "Erro ao processar o formulário de contato." });
+    }
+  });
+
   // Serve media files
   app.use('/media', express.static(path.join(process.cwd(), 'dist', 'media')));
 

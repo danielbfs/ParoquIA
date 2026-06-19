@@ -1,5 +1,3 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import LandingPage from './pages/LandingPage';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, 
@@ -33,12 +31,13 @@ import {
   Paperclip
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from './lib/utils';
-import { firestoreService } from './services/firestoreService';
-import { generateChatResponse } from './services/geminiService';
-import { evolutionService } from './services/evolutionService';
-import { auth, signInWithGoogle } from './lib/firebase';
-import { Message, Transaction, Parishioner, Event as ChurchEvent, UserProfile, SystemConfig, ConversationMeta, Critique, AuthorizedEmail } from './types';
+import { cn } from '../lib/utils';
+import { firestoreService } from '../services/firestoreService';
+import { generateChatResponse } from '../services/geminiService';
+import { evolutionService } from '../services/evolutionService';
+import { auth, signInWithGoogle, storage } from '../lib/firebase';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { Message, Transaction, Parishioner, Event as ChurchEvent, UserProfile, SystemConfig, ConversationMeta, Critique, AuthorizedEmail } from '../types';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
   BarChart, 
@@ -78,7 +77,7 @@ const MOCK_MESSAGES: Message[] = [
   }
 ];
 
-function PastoralPanel() {
+export default function AppShell() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'messages' | 'finance' | 'reports' | 'events' | 'admin' | 'chat_test'>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [user, setUser] = useState<User | null>(null);
@@ -494,6 +493,48 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
   const [activeAdminTab, setActiveAdminTab] = useState<'general' | 'evolution' | 'critiques' | 'users'>('general');
   const [prompt, setPrompt] = useState(config?.aiPrompt || '');
   const [parishName, setParishName] = useState(config?.parishName || '');
+  const [address, setAddress] = useState(config?.address || '');
+  const [phone, setPhone] = useState(config?.phone || '');
+  const [email, setEmail] = useState(config?.email || '');
+  const [contactEmailTo, setContactEmailTo] = useState(config?.contactEmailTo || '');
+  const [heroImageUrl, setHeroImageUrl] = useState(config?.heroImageUrl || '');
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleUploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      const storageRef = ref(storage, `config/logo_${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+      
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(Math.round(progress));
+        }, 
+        (error) => {
+          console.error(error);
+          alert('Erro no upload da logo: ' + error.message);
+          setIsUploading(false);
+          setUploadProgress(null);
+        }, 
+        async () => {
+          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          setHeroImageUrl(downloadUrl);
+          setIsUploading(false);
+          setUploadProgress(null);
+        }
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao iniciar upload da logo: ' + err.message);
+      setIsUploading(false);
+      setUploadProgress(null);
+    }
+  };
   
   // Modalities management
   const [modalities, setModalities] = useState<string[]>(config?.paymentModalities || []);
@@ -531,6 +572,11 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
       if (config.evolutionApiUrl) setApiUrl(config.evolutionApiUrl);
       if (config.evolutionApiKey) setApiKey(config.evolutionApiKey);
       if (config.evolutionInstanceName) setInstanceName(config.evolutionInstanceName);
+      setAddress(config.address || '');
+      setPhone(config.phone || '');
+      setEmail(config.email || '');
+      setContactEmailTo(config.contactEmailTo || '');
+      setHeroImageUrl(config.heroImageUrl || '');
     }
   }, [config]);
 
@@ -669,17 +715,28 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
   const handleSave = async () => {
     if (!config?.id) return;
     setIsSaving(true);
-    const updatedData = {
-      aiPrompt: prompt,
-      parishName,
-      evolutionApiUrl: apiUrl,
-      evolutionApiKey: apiKey,
-      evolutionInstanceName: instanceName,
-      updatedAt: new Date().toISOString()
-    };
-    await firestoreService.updateDocument('config', config.id, updatedData);
-    setConfig({ ...config, ...updatedData });
-    setIsSaving(false);
+    try {
+      const updatedData = {
+        aiPrompt: prompt,
+        parishName,
+        evolutionApiUrl: apiUrl,
+        evolutionApiKey: apiKey,
+        evolutionInstanceName: instanceName,
+        address,
+        phone,
+        email,
+        contactEmailTo,
+        heroImageUrl,
+        updatedAt: new Date().toISOString()
+      };
+      await firestoreService.updateDocument('config', config.id, updatedData);
+      setConfig({ ...config, ...updatedData });
+      alert('Configurações salvas com sucesso!');
+    } catch (err: any) {
+      alert('Erro ao salvar: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -748,11 +805,11 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
               />
             </div>
-
+            
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Prompt de Instruções (Persona)</label>
               <textarea 
-                rows={10}
+                rows={6}
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10 font-medium text-sm leading-relaxed"
@@ -761,13 +818,86 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
               <p className="text-[10px] text-gray-400 mt-2 italic">* Este prompt guia o comportamento de todas as respostas automáticas da IA.</p>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Telefone de Contato</label>
+                <input 
+                  type="text" 
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                  placeholder="(00) 00000-0000"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">E-mail Exibido</label>
+                <input 
+                  type="email" 
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                  placeholder="contato@paroquia.com"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Endereço da Paróquia</label>
+              <input 
+                type="text" 
+                value={address}
+                onChange={e => setAddress(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                placeholder="Rua da Igreja, 123 - Centro"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Destino de E-mail de Contato (Para avisos)</label>
+              <input 
+                type="email" 
+                value={contactEmailTo}
+                onChange={e => setContactEmailTo(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                placeholder="secretaria@paroquia.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Logo / Imagem de Capa (Paróquia)</label>
+              <div className="flex items-center gap-4">
+                {heroImageUrl && (
+                  <div className="w-16 h-16 rounded-xl border border-gray-100 overflow-hidden shrink-0">
+                    <img src={heroImageUrl} alt="Logo da paróquia" className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={handleUploadLogo}
+                    disabled={isUploading}
+                    className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#5A5A40]/10 file:text-[#5A5A40] hover:file:bg-[#5A5A40]/20"
+                  />
+                  {isUploading && (
+                    <div className="w-full bg-gray-100 h-2 rounded-full mt-2 overflow-hidden">
+                      <div className="bg-[#5A5A40] h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                    </div>
+                  )}
+                  {uploadProgress !== null && (
+                    <p className="text-[10px] text-gray-400 mt-1">Carregando: {uploadProgress}%</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <button 
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={isSaving || isUploading}
               className="w-full bg-[#5A5A40] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#4A4A35] transition-all shadow-lg shadow-[#5A5A40]/10 disabled:opacity-50"
             >
               {isSaving ? <Clock className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              {isSaving ? 'Salvando Configurações...' : 'Atualizar IA'}
+              {isSaving ? 'Salvando Configurações...' : 'Atualizar IA e Dados'}
             </button>
           </div>
 
@@ -1905,6 +2035,11 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceDay, setRecurrenceDay] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [startTime, setStartTime] = useState('08:00');
+  const [endTime, setEndTime] = useState('09:00');
+  const [imageUrl, setImageUrl] = useState('');
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     if (editingEvent) {
@@ -1914,6 +2049,9 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       setLocation(editingEvent.location);
       setIsRecurring(!!editingEvent.isRecurring);
       setRecurrenceDay(editingEvent.recurrenceDay || 0);
+      setStartTime(editingEvent.startTime || '08:00');
+      setEndTime(editingEvent.endTime || '09:00');
+      setImageUrl(editingEvent.imageUrl || '');
       setShowAddModal(true);
     } else {
       setTitle('');
@@ -1922,8 +2060,46 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       setLocation('');
       setIsRecurring(false);
       setRecurrenceDay(0);
+      setStartTime('08:00');
+      setEndTime('09:00');
+      setImageUrl('');
     }
   }, [editingEvent]);
+
+  const handleUploadEventImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      const storageRef = ref(storage, `events/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+      
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(Math.round(progress));
+        }, 
+        (error) => {
+          console.error(error);
+          alert('Erro no upload da imagem do evento: ' + error.message);
+          setIsUploading(false);
+          setUploadProgress(null);
+        }, 
+        async () => {
+          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          setImageUrl(downloadUrl);
+          setIsUploading(false);
+          setUploadProgress(null);
+        }
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao iniciar upload da imagem do evento: ' + err.message);
+      setIsUploading(false);
+      setUploadProgress(null);
+    }
+  };
 
   const handleSaveEvent = async (mode: 'all' | 'single' = 'all') => {
     if (!title) return;
@@ -1942,7 +2118,10 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       description: '',
       isRecurring: mode === 'all' ? isRecurring : false,
       recurrenceDay: (mode === 'all' && isRecurring) ? recurrenceDay : undefined,
-      recurrenceTime: (mode === 'all' && isRecurring) ? time : undefined
+      recurrenceTime: (mode === 'all' && isRecurring) ? time : undefined,
+      startTime,
+      endTime,
+      imageUrl
     };
 
     if (editingEvent?.id) {
@@ -2187,23 +2366,37 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Data / Início</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Data</label>
                   <input 
                     type="date"
                     value={date}
                     onChange={e => setDate(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none"
+                    className="w-full px-2 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none text-xs"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Horário</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Início (HH:mm)</label>
                   <input 
-                    type="time"
-                    value={time}
-                    onChange={e => setTime(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none"
+                    type="text"
+                    value={startTime}
+                    onChange={e => {
+                      setStartTime(e.target.value);
+                      setTime(e.target.value);
+                    }}
+                    placeholder="08:00"
+                    className="w-full px-2 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none text-xs"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Fim (HH:mm)</label>
+                  <input 
+                    type="text"
+                    value={endTime}
+                    onChange={e => setEndTime(e.target.value)}
+                    placeholder="09:00"
+                    className="w-full px-2 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none text-xs"
                   />
                 </div>
               </div>
@@ -2217,6 +2410,34 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                   placeholder="Ex: Matriz, Capela, Salão Paroquial..."
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Imagem do Evento</label>
+                <div className="flex items-center gap-4">
+                  {imageUrl && (
+                    <div className="w-16 h-16 rounded-xl border border-gray-100 overflow-hidden shrink-0">
+                      <img src={imageUrl} alt="Imagem do evento" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      onChange={handleUploadEventImage}
+                      disabled={isUploading}
+                      className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#5A5A40]/10 file:text-[#5A5A40] hover:file:bg-[#5A5A40]/20"
+                    />
+                    {isUploading && (
+                      <div className="w-full bg-gray-100 h-2 rounded-full mt-2 overflow-hidden">
+                        <div className="bg-[#5A5A40] h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                      </div>
+                    )}
+                    {uploadProgress !== null && (
+                      <p className="text-[10px] text-gray-400 mt-1">Carregando: {uploadProgress}%</p>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="flex items-center gap-3 p-4 bg-purple-50 rounded-2xl border border-purple-100">
@@ -2268,8 +2489,8 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                 )}
                 <button 
                   onClick={() => handleSaveEvent()}
-                  disabled={isSaving}
-                  className="flex-[2] bg-[#5A5A40] text-white py-4 rounded-xl font-bold hover:bg-[#4A4A35] transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#5A5A40]/20"
+                  disabled={isSaving || isUploading}
+                  className="flex-[2] bg-[#5A5A40] text-white py-4 rounded-xl font-bold hover:bg-[#4A4A35] transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#5A5A40]/20 disabled:opacity-50"
                 >
                   {isSaving ? <Clock className="w-4 h-4 animate-spin" /> : editingEvent ? <Smartphone className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                   {isSaving ? 'Salvando...' : editingEvent ? 'Salvar Alterações' : 'Confirmar Agendamento'}
@@ -2374,17 +2595,5 @@ function ReportsView({ transactions, parishioners }: { transactions: Transaction
         </div>
       </div>
     </div>
-  );
-}
-
-
-export default function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/app" element={<PastoralPanel />} />
-      </Routes>
-    </BrowserRouter>
   );
 }

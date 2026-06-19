@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 // In AI Studio, the firebase-applet-config.json is generated automatically.
 // We prioritize environment variables for easier updates and deployment flexibility.
@@ -22,6 +23,9 @@ const finalConfig = {
 const app = initializeApp(finalConfig);
 export const db = getFirestore(app, finalConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
+
+
 
 export const signInWithGoogle = async () => {
   const provider = new GoogleAuthProvider();

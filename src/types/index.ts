@@ -90,6 +90,9 @@ export interface Event {
   recurrenceDay?: number; // 0-6 (Sunday-Saturday)
   recurrenceTime?: string; // "HH:mm"
   excludedDates?: string[]; // Array of YYYY-MM-DD
+  imageUrl?: string;       // imagem do evento
+  startTime?: string;      // "HH:mm" - início
+  endTime?: string;        // "HH:mm" - fim
 }
 
 export interface UserProfile {
@@ -118,4 +121,10 @@ export interface SystemConfig {
   evolutionInstanceName?: string;
   updatedAt: string;
   paymentModalities?: string[];
+  heroImageUrl?: string;   // imagem/logo da paróquia
+  address?: string;        // endereço para contato
+  phone?: string;          // telefone
+  email?: string;          // e-mail exibido
+  contactEmailTo?: string; // destino do formulário de contato
 }
+

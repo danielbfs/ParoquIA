@@ -1,6 +1,27 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const AI_PROVIDER = process.env.AI_PROVIDER || 'gemini';
+const AI_MODEL = process.env.AI_MODEL || 'gemini-3-flash-preview';
+const AI_API_KEY = process.env.AI_API_KEY || process.env.GEMINI_API_KEY;
+
+let ai: any = null;
+if (AI_PROVIDER === 'gemini') {
+  ai = new GoogleGenAI({ apiKey: AI_API_KEY });
+}
+
+async function generateContent(modelName: string, contents: string, config?: any) {
+  if (AI_PROVIDER === 'gemini') {
+    if (!ai) {
+      throw new Error("GoogleGenAI client is not initialized.");
+    }
+    return await ai.models.generateContent({
+      model: modelName,
+      contents,
+      config,
+    });
+  }
+  throw new Error(`AI Provider ${AI_PROVIDER} is not supported.`);
+}
 
 export async function generateChatResponse(
   message: string, 
@@ -28,18 +49,15 @@ export async function generateChatResponse(
       IA:
     `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-    });
+    const response = await generateContent(AI_MODEL, prompt);
 
     const responseText = response.text || "Paz de Cristo! Como posso te ajudar?";
 
     // Secondary analysis for metadata extraction (category/sentiment)
-    const analysisResponse = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Analise brevemente esta mensagem de usuário: "${message}". Extraia categoria e sentimento.`,
-      config: {
+    const analysisResponse = await generateContent(
+      AI_MODEL,
+      `Analise brevemente esta mensagem de usuário: "${message}". Extraia categoria e sentimento.`,
+      {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -50,7 +68,7 @@ export async function generateChatResponse(
           required: ["category", "sentiment"]
         }
       }
-    });
+    );
 
     const analysis = JSON.parse(analysisResponse.text || '{"category": "Outros", "sentiment": "Neutro"}');
 
