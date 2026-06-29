@@ -1,0 +1,19 @@
+# Config dinâmica do Traefik (file provider).
+# Usado em vez do provider Docker porque o daemon Docker 29+ (API mín. 1.40)
+# rejeita o cliente do provider Docker do Traefik v3.1 (fixado em 1.24).
+# Se o domínio mudar, atualize a regra Host abaixo.
+http:
+  routers:
+    paroquia:
+      rule: "Host(`paroquia.sigame.tec.br`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      service: paroquia
+
+  services:
+    paroquia:
+      loadBalancer:
+        servers:
+          - url: "http://app:3000"

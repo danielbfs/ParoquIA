@@ -3,13 +3,11 @@ services:
     image: traefik:v3.1
     container_name: paroquia-traefik
     restart: always
-    environment:
-      # O daemon Docker 29+ exige API >= 1.40; sem isto o provider Docker do
-      # Traefik fixa a API 1.24 e falha ("client version 1.24 is too old").
-      - DOCKER_API_VERSION=1.44
     command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
+      # File provider (não o Docker provider): o daemon Docker 29+ rejeita o
+      # cliente do provider Docker do Traefik v3.1 ("client version 1.24 is too old").
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       # Redireciona todo HTTP para HTTPS
@@ -24,7 +22,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./traefik/dynamic:/etc/traefik/dynamic:ro"
       - "letsencrypt:/letsencrypt"
     networks:
       - internal
@@ -67,13 +65,8 @@ services:
       - internal
     depends_on:
       - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.paroquia.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.paroquia.entrypoints=websecure"
-      - "traefik.http.routers.paroquia.tls=true"
-      - "traefik.http.routers.paroquia.tls.certresolver=letsencrypt"
-      - "traefik.http.services.paroquia.loadbalancer.server.port=3000"
+    expose:
+      - "3000"
 
 networks:
   internal:
