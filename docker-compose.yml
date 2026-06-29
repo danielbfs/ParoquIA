@@ -3,6 +3,10 @@ services:
     image: traefik:v3.1
     container_name: paroquia-traefik
     restart: always
+    environment:
+      # O daemon Docker 29+ exige API >= 1.40; sem isto o provider Docker do
+      # Traefik fixa a API 1.24 e falha ("client version 1.24 is too old").
+      - DOCKER_API_VERSION=1.44
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
