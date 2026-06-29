@@ -17,6 +17,9 @@ COPY . .
 RUN if [ ! -f firebase-applet-config.json ]; then echo "{}" > firebase-applet-config.json; fi
 
 # Build the application
+# Eleva o teto de heap do V8: em hosts de pouca RAM (ex.: Lightsail 1GB) o
+# auto-dimensionamento do Node fica pequeno e o `vite build` aborta (SIGABRT/134).
+ENV NODE_OPTIONS=--max-old-space-size=1536
 RUN npm run build
 
 # Expose the port the app runs on
