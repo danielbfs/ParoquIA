@@ -1,78 +1,94 @@
-# Guia de Implantação - Hostinger VPS (Ubuntu + Docker + Traefik)
+# Guia de Implantação - AWS Lightsail (Ubuntu + Docker + Traefik)
 
-Este documento descreve como implantar o projeto **ParoquIA** em uma VPS da Hostinger utilizando Docker, Traefik para gerenciamento de tráfego e SSL automático via Let's Encrypt.
+Este documento descreve como implantar o **ParoquIA** numa instância AWS Lightsail
+usando Docker. O `docker-compose.yml` é autocontido: sobe o app **e** um Traefik
+que cuida do roteamento e do SSL automático via Let's Encrypt.
 
-## 1. Requisitos Prévios
+## 1. Criar a instância Lightsail
 
-- VPS com Ubuntu (recomendado 22.04 ou 24.04).
-- Domínio apontado para o IP da sua VPS (registros A e/ou CNAME).
-- Docker e Docker Compose instalados na VPS.
+No console **AWS Lightsail → Create instance**:
 
-## 2. Preparação da VPS
+- **Region:** São Paulo (`sa-east-1`).
+- **Platform:** Linux/Unix → **Blueprint: OS Only → Ubuntu 24.04 LTS**.
+- **SSH key:** crie/baixe o `.pem`.
+- **Plano:** 2 GB RAM / 2 vCPU recomendado (o `vite build` roda no container).
+  Mínimo: 1 GB + swap (ver passo 2).
+- Após criar:
+  - **Networking → Static IP:** crie e anexe um IP estático.
+  - **Networking → Firewall:** libere **80 (HTTP)** e **443 (HTTPS)**; mantenha
+    **22 (SSH)** (de preferência restrito ao seu IP).
+- **DNS:** aponte um registro **A** do seu domínio para o IP estático.
 
-Acesse sua VPS via SSH e execute os seguintes comandos para instalar o Docker:
+## 2. Preparação do servidor
+
+Acesse via SSH (`ssh -i chave.pem ubuntu@SEU_IP`) e instale o Docker:
 
 ```bash
-# Atualizar repositórios
 sudo apt update && sudo apt upgrade -y
 
-# Instalar Docker
+# Docker + Compose plugin
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
-
-# Instalar Docker Compose (v2 já vem no Docker CLI geralmente)
-# Verifique com: docker compose version
+sudo usermod -aG docker ubuntu   # rode novo login/SSH para aplicar
+docker compose version           # confirme a v2
 ```
 
-## 3. Configuração do Projeto
+**Swap (obrigatório no plano de 1 GB, opcional no de 2 GB):**
 
-Clone o repositório na sua VPS:
+```bash
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+## 3. Configuração do projeto
 
 ```bash
 git clone https://github.com/danielbfs/ParoquIA.git app
 cd app
-```
-
-Crie o arquivo `.env` baseado no `.env.example`:
-
-```bash
 cp .env.example .env
 nano .env
 ```
 
-Preencha as variáveis de ambiente necessárias, especialmente:
-- `DOMAIN`: O domínio que você usará (ex: `paroquia.seudominio.com.br`).
-- `EMAIL`: Seu e-mail para registro do SSL no Let's Encrypt.
-- `GEMINI_API_KEY`: A chave obtida no Google AI Studio para o funcionamento da IA.
-- `VITE_FIREBASE_DATABASE_ID`: O ID do banco de dados Firestore (verifique no `firebase-applet-config.json` local ou no console do Firebase).
-- Todas as chaves do Firebase e do Evolution API.
+Preencha, em especial:
+- `DOMAIN`: domínio apontado para o IP (ex: `paroquia.seudominio.com.br`).
+- `EMAIL`: e-mail para registro do SSL no Let's Encrypt.
+- `GEMINI_API_KEY` / `AI_API_KEY`: chave da IA.
+- `VITE_FIREBASE_*` e `VITE_EVOLUTION_*`: credenciais do Firebase e Evolution.
+- `SMTP_*` e `CONTACT_EMAIL_TO`: para o formulário de contato.
+
+Substitua também o `firebase-applet-config.json` pelas credenciais reais do
+projeto Firebase (não versionado).
 
 ## 4. Inicialização
-
-Inicie o contêiner:
 
 ```bash
 docker compose up -d --build
 ```
 
-**Importante:** Este projeto utiliza a porta `3001` via `127.0.0.1`. Certifique-se de que o seu Traefik central está configurado para ler os labels do Docker e alcançar o serviço através dessa porta.
+O Traefik resolve o SSL automaticamente (desafio HTTP-01). Aguarde 1-2 min e
+acesse `https://SEU_DOMINIO`.
 
-## 5. Verificação
+## 5. Persistência
 
-- O Traefik configurará automaticamente o SSL. Aguarde alguns minutos para o desafio HTTP do Let's Encrypt completar.
-- Acesse seu domínio via HTTPS.
-- Use `docker compose logs -f app` para monitorar os logs da aplicação.
+A sessão do WhatsApp (Baileys) e a mídia são gravadas em volumes Docker
+(`whatsapp_sessions`, `whatsapp_media`) e **sobrevivem a rebuilds/deploys** — não
+é preciso reescanear o QR Code a cada atualização. O certificado SSL fica no
+volume `letsencrypt`.
 
-## 6. Atualização do App
-
-Sempre que fizer um novo push para o GitHub, você pode atualizar a VPS executando:
+## 6. Operação
 
 ```bash
-docker compose pull
+docker compose logs -f app        # logs do app
+docker compose logs -f traefik    # logs do proxy/SSL
+docker compose ps                 # status
+
+# Atualizar após um novo push:
+git pull
 docker compose up -d --build
 ```
 
 ---
 **Desenvolvedor:** Daniel Silva (danielbfs@gmail.com)
-
-**Nota sobre Firewall:** Certifique-se de que as portas 80 e 443 estão abertas no firewall da Hostinger (Painel de Controle -> VPS -> Firewall).

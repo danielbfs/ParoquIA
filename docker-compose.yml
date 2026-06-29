@@ -1,4 +1,30 @@
 services:
+  traefik:
+    image: traefik:v3.1
+    container_name: paroquia-traefik
+    restart: always
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Redireciona todo HTTP para HTTPS
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Let's Encrypt (desafio HTTP-01)
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "letsencrypt:/letsencrypt"
+    networks:
+      - internal
+
   app:
     build: .
     container_name: paroquia-ai
@@ -25,18 +51,27 @@ services:
       - SMTP_PASS=${SMTP_PASS}
       - SMTP_FROM=${SMTP_FROM}
       - CONTACT_EMAIL_TO=${CONTACT_EMAIL_TO}
-
-    ports:
-      - "127.0.0.1:3001:3000"
+    volumes:
+      # Persiste a sessão do WhatsApp (Baileys) e a mídia entre deploys/rebuilds
+      - "whatsapp_sessions:/app/instances"
+      - "whatsapp_media:/app/dist/media"
     networks:
       - internal
+    depends_on:
+      - traefik
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.paroquia.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.paroquia.entrypoints=websecure"
       - "traefik.http.routers.paroquia.tls=true"
       - "traefik.http.routers.paroquia.tls.certresolver=letsencrypt"
-      - "traefik.http.services.paroquia.loadbalancer.server.url=http://127.0.0.1:3001"
+      - "traefik.http.services.paroquia.loadbalancer.server.port=3000"
 
 networks:
   internal:
     name: paroquia_internal
+
+volumes:
+  whatsapp_sessions:
+  whatsapp_media:
+  letsencrypt:
