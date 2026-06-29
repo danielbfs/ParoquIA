@@ -103,6 +103,13 @@ export default function LandingPage() {
     fetchLandingData();
   }, []);
 
+  // Título da aba reflete o nome da paróquia (varia por implantação)
+  useEffect(() => {
+    if (config?.parishName) {
+      document.title = config.parishName;
+    }
+  }, [config.parishName]);
+
   if (loading) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#FDFDFB]">

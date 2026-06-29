@@ -189,6 +189,13 @@ export default function AppShell() {
     return () => unsubAuth();
   }, []);
 
+  // Título da aba reflete o nome da paróquia (varia por implantação)
+  useEffect(() => {
+    if (config?.parishName) {
+      document.title = config.parishName;
+    }
+  }, [config?.parishName]);
+
   useEffect(() => {
     if (!user || !profile?.isAuthorized) return;
 
