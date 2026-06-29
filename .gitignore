@@ -8,3 +8,4 @@ coverage/
 !.env.example
 instances/
 firebase-applet-config.json
+service-account.json
