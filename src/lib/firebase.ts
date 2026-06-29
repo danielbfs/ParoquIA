@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 // In AI Studio, the firebase-applet-config.json is generated automatically.
@@ -21,7 +21,14 @@ const finalConfig = {
 };
 
 const app = initializeApp(finalConfig);
-export const db = getFirestore(app, finalConfig.firestoreDatabaseId);
+// ignoreUndefinedProperties: os formulários do admin enviam campos opcionais como
+// `undefined`; sem isto o SDK lança "Unsupported field value: undefined" e a
+// gravação falha antes de ir à rede (causa do "nada salva").
+export const db = initializeFirestore(
+  app,
+  { ignoreUndefinedProperties: true },
+  finalConfig.firestoreDatabaseId
+);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 

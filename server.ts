@@ -163,7 +163,20 @@ async function startServer() {
 
       // 1. Busca a configuração da paróquia na coleção 'config' (pegando o primeiro documento)
       const configSnap = await adminDb.collection("config").get();
-      const config = configSnap.docs[0]?.data() || null;
+      const rawConfig = configSnap.docs[0]?.data() || null;
+
+      // 1.1. Allowlist: expõe SOMENTE os campos públicos consumidos pela landing page.
+      // NUNCA retornar segredos (evolutionApiKey, evolutionApiUrl, evolutionInstanceName,
+      // aiPrompt, contactEmailTo) nem campos internos não usados publicamente.
+      const config = rawConfig
+        ? {
+            parishName: rawConfig.parishName ?? null,
+            heroImageUrl: rawConfig.heroImageUrl ?? null,
+            address: rawConfig.address ?? null,
+            phone: rawConfig.phone ?? null,
+            email: rawConfig.email ?? null,
+          }
+        : null;
 
       // 2. Busca os eventos cadastrados na coleção 'events'
       const eventsSnap = await adminDb.collection("events").get();

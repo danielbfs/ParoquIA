@@ -51,7 +51,7 @@ import {
   LineChart, 
   Line
 } from 'recharts';
-import { format } from 'date-fns';
+import { format, addMonths, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import ReactMarkdown from 'react-markdown';
 import { orderBy } from 'firebase/firestore';
@@ -221,8 +221,8 @@ export default function AppShell() {
         }
         
         const mockEvents = [
-          { title: 'Festa da Padroeira', date: new Date(Date.now() + 86400000 * 5).toISOString(), location: 'Salão Paroquial', description: 'Grande celebração com quermesse e procissão.' },
-          { title: 'Missa das Crianças', date: new Date(Date.now() + 86400000 * 2).toISOString(), location: 'Igreja Matriz', description: 'Celebração especial para as famílias.' }
+          { title: 'Festa da Padroeira', date: format(new Date(Date.now() + 86400000 * 5), "yyyy-MM-dd'T'HH:mm:ss"), location: 'Salão Paroquial', description: 'Grande celebração com quermesse e procissão.' },
+          { title: 'Missa das Crianças', date: format(new Date(Date.now() + 86400000 * 2), "yyyy-MM-dd'T'HH:mm:ss"), location: 'Igreja Matriz', description: 'Celebração especial para as famílias.' }
         ];
         for (const ev of mockEvents) {
           await firestoreService.addDocument('events', ev);
@@ -518,6 +518,18 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
   const handleUploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      alert('Formato de imagem inválido. Use PNG, JPEG, WEBP ou GIF.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      alert('Imagem muito grande. O tamanho máximo permitido é 5 MB.');
+      e.target.value = '';
+      return;
+    }
     setIsUploading(true);
     setUploadProgress(0);
     try {
@@ -2046,6 +2058,7 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [time, setTime] = useState('08:00');
   const [location, setLocation] = useState('');
+  const [description, setDescription] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceDay, setRecurrenceDay] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
@@ -2061,6 +2074,7 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       setDate(format(new Date(editingEvent.date), 'yyyy-MM-dd'));
       setTime(format(new Date(editingEvent.date), 'HH:mm'));
       setLocation(editingEvent.location);
+      setDescription(editingEvent.description || '');
       setIsRecurring(!!editingEvent.isRecurring);
       setRecurrenceDay(editingEvent.recurrenceDay || 0);
       setStartTime(editingEvent.startTime || '08:00');
@@ -2072,6 +2086,7 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       setDate(format(new Date(), 'yyyy-MM-dd'));
       setTime('08:00');
       setLocation('');
+      setDescription('');
       setIsRecurring(false);
       setRecurrenceDay(0);
       setStartTime('08:00');
@@ -2083,6 +2098,18 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
   const handleUploadEventImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      alert('Formato de imagem inválido. Use PNG, JPEG, WEBP ou GIF.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      alert('Imagem muito grande. O tamanho máximo permitido é 5 MB.');
+      e.target.value = '';
+      return;
+    }
     setIsUploading(true);
     setUploadProgress(0);
     try {
@@ -2117,7 +2144,22 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
 
   const handleSaveEvent = async (mode: 'all' | 'single' = 'all') => {
     if (!title) return;
-    
+
+    // Validate time fields (HH:mm)
+    const timeRegex = /^([01]?\d|2[0-3]):[0-5]\d$/;
+    if (!timeRegex.test(startTime)) {
+      alert('Horário de início inválido. Use o formato HH:mm.');
+      return;
+    }
+    if (!timeRegex.test(endTime)) {
+      alert('Horário de término inválido. Use o formato HH:mm.');
+      return;
+    }
+    if (startTime && endTime && endTime <= startTime) {
+      alert('O horário de término deve ser maior que o horário de início.');
+      return;
+    }
+
     // If editing a recurring event and choice not yet made
     if (editingEvent?.isRecurring && !showRecurrenceChoice && mode === 'all') {
       setShowRecurrenceChoice(true);
@@ -2129,7 +2171,7 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       title,
       date: `${date}T${time}:00`,
       location,
-      description: '',
+      description,
       isRecurring: mode === 'all' ? isRecurring : false,
       recurrenceDay: (mode === 'all' && isRecurring) ? recurrenceDay : undefined,
       recurrenceTime: (mode === 'all' && isRecurring) ? time : undefined,
@@ -2227,13 +2269,13 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
 
         <div className="flex items-center gap-4">
            <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl">
-             <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))} className="p-2 hover:bg-white rounded-lg transition-colors">
+             <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-white rounded-lg transition-colors">
                <ChevronLeft className="w-4 h-4 text-[#5A5A40]" />
              </button>
              <span className="px-4 font-bold text-sm min-w-[140px] text-center">
                {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
              </span>
-             <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))} className="p-2 hover:bg-white rounded-lg transition-colors">
+             <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-2 hover:bg-white rounded-lg transition-colors">
                <ChevronRight className="w-4 h-4 text-[#5A5A40]" />
              </button>
            </div>
@@ -2286,7 +2328,9 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                           )}
                         >
                           {ev.isRecurring && <Clock className="w-2 h-2 inline mr-1" />}
-                          {format(new Date(ev.date), 'HH:mm')} {ev.title}
+                          {ev.isRecurring
+                            ? (ev.recurrenceTime || ev.startTime)
+                            : (ev.startTime || format(new Date(ev.date), 'HH:mm'))} {ev.title}
                         </button>
                       ))}
                     </div>
@@ -2391,9 +2435,9 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Início (HH:mm)</label>
-                  <input 
-                    type="text"
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Início</label>
+                  <input
+                    type="time"
                     value={startTime}
                     onChange={e => {
                       setStartTime(e.target.value);
@@ -2404,9 +2448,9 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Fim (HH:mm)</label>
-                  <input 
-                    type="text"
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Fim</label>
+                  <input
+                    type="time"
                     value={endTime}
                     onChange={e => setEndTime(e.target.value)}
                     placeholder="09:00"
@@ -2423,6 +2467,17 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                   onChange={e => setLocation(e.target.value)}
                   placeholder="Ex: Matriz, Capela, Salão Paroquial..."
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Descrição</label>
+                <textarea
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  rows={3}
+                  placeholder="Detalhes do evento, programação, observações..."
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10 resize-none"
                 />
               </div>
 
