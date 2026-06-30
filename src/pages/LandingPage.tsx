@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import Hero from '../components/landing/Hero';
 import EventsSection from '../components/landing/EventsSection';
 import EventCalendar from '../components/landing/EventCalendar';
+import WorksSection from '../components/landing/WorksSection';
 import ContactSection from '../components/landing/ContactSection';
-import { SystemConfig, Event as ChurchEvent } from '../types';
+import { SystemConfig, Event as ChurchEvent, Work } from '../types';
 import { motion } from 'motion/react';
 import { AlertCircle, Clock } from 'lucide-react';
 
@@ -71,9 +72,33 @@ const FALLBACK_EVENTS: ChurchEvent[] = [
   }
 ];
 
+const FALLBACK_WORKS: Work[] = [
+  {
+    id: 'w1',
+    title: 'Reforma do Lar dos Idosos',
+    description:
+      'Ampliação e modernização dos espaços que acolhem nossos idosos, oferecendo mais conforto, segurança e dignidade a quem tanto serviu à comunidade.',
+    imageUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80',
+    status: 'Em andamento',
+    isActive: true,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'w2',
+    title: 'Construção do Centro Catequético',
+    description:
+      'Um novo espaço dedicado à formação na fé de crianças, jovens e adultos, com salas amplas e acolhedoras para a evangelização.',
+    imageUrl: 'https://images.unsplash.com/photo-1473177104440-ffee2f376098?auto=format&fit=crop&w=800&q=80',
+    status: 'Planejamento',
+    isActive: true,
+    createdAt: new Date().toISOString()
+  }
+];
+
 export default function LandingPage() {
   const [config, setConfig] = useState<SystemConfig>(FALLBACK_CONFIG);
   const [events, setEvents] = useState<ChurchEvent[]>(FALLBACK_EVENTS);
+  const [works, setWorks] = useState<Work[]>(FALLBACK_WORKS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -91,6 +116,9 @@ export default function LandingPage() {
         }
         if (data.events && Array.isArray(data.events) && data.events.length > 0) {
           setEvents(data.events);
+        }
+        if (data.works && Array.isArray(data.works)) {
+          setWorks(data.works);
         }
       } catch (err) {
         console.warn('Erro ao carregar dados reais da Landing Page, usando fallback.', err);
@@ -137,6 +165,9 @@ export default function LandingPage() {
 
       {/* Monthly Calendar Section */}
       <EventCalendar events={events} pixKey={config.pixKey} whatsappNumber={config.whatsappNumber} />
+
+      {/* Parish Works Section */}
+      <WorksSection works={works} pixKey={config.pixKey} whatsappNumber={config.whatsappNumber} />
 
       {/* Contact Section */}
       <ContactSection config={config} />

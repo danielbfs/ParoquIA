@@ -32,7 +32,9 @@ import {
   Check,
   Paperclip,
   MapPin,
-  Pencil
+  Pencil,
+  HardHat,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -41,7 +43,7 @@ import { generateChatResponse } from './services/geminiService';
 import { evolutionService } from './services/evolutionService';
 import { auth, signInWithGoogle, storage } from './lib/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Message, Transaction, Parishioner, Event as ChurchEvent, UserProfile, SystemConfig, ConversationMeta, Critique, AuthorizedEmail } from './types';
+import { Message, Transaction, Parishioner, Event as ChurchEvent, UserProfile, SystemConfig, ConversationMeta, Critique, AuthorizedEmail, Work } from './types';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
   BarChart, 
@@ -82,7 +84,7 @@ const MOCK_MESSAGES: Message[] = [
 ];
 
 function PastoralPanel() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'messages' | 'finance' | 'reports' | 'events' | 'admin' | 'chat_test'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'messages' | 'finance' | 'reports' | 'events' | 'works' | 'admin' | 'chat_test'>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -92,6 +94,7 @@ function PastoralPanel() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [parishioners, setParishioners] = useState<Parishioner[]>([]);
   const [events, setEvents] = useState<ChurchEvent[]>([]);
+  const [works, setWorks] = useState<Work[]>([]);
   const [conversationMetas, setConversationMetas] = useState<ConversationMeta[]>([]);
   const [critiques, setCritiques] = useState<Critique[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
@@ -194,6 +197,7 @@ function PastoralPanel() {
     const unsubTransactions = firestoreService.subscribeCollection<Transaction>('transactions', [orderBy('date', 'desc')], setTransactions);
     const unsubParishioners = firestoreService.subscribeCollection<Parishioner>('parishioners', [], setParishioners);
     const unsubEvents = firestoreService.subscribeCollection<ChurchEvent>('events', [orderBy('date', 'asc')], setEvents);
+    const unsubWorks = firestoreService.subscribeCollection<Work>('works', [orderBy('createdAt', 'desc')], setWorks);
     const unsubConversations = firestoreService.subscribeCollection<ConversationMeta>('conversations', [orderBy('lastMessageAt', 'desc')], setConversationMetas);
     const unsubCritiques = firestoreService.subscribeCollection<Critique>('critiques', [orderBy('createdAt', 'desc')], setCritiques);
     const unsubConfig = firestoreService.subscribeCollection<SystemConfig>('config', [], (configs) => {
@@ -234,6 +238,7 @@ function PastoralPanel() {
       unsubTransactions();
       unsubParishioners();
       unsubEvents();
+      unsubWorks();
       unsubConversations();
       unsubCritiques();
       unsubConfig();
@@ -353,6 +358,7 @@ function PastoralPanel() {
     { id: 'messages', icon: MessageSquare, label: 'Mensagens' },
     { id: 'finance', icon: Wallet, label: 'Financeiro' },
     { id: 'events', icon: Calendar, label: 'Agenda' },
+    { id: 'works', icon: HardHat, label: 'Obras' },
     { id: 'reports', icon: FileSearch, label: 'Relatórios' },
     { id: 'chat_test', icon: Smartphone, label: 'Teste seu chat' },
     ...(profile?.role === 'admin' ? [{ id: 'admin', icon: Settings, label: 'Administração' }] : []),
@@ -478,6 +484,7 @@ function PastoralPanel() {
               )}
               {activeTab === 'finance' && <FinanceView transactions={transactions} config={config} />}
               {activeTab === 'events' && <EventsView events={events} />}
+              {activeTab === 'works' && <ObrasView works={works} />}
               {activeTab === 'reports' && <ReportsView transactions={transactions} parishioners={parishioners} />}
               {activeTab === 'chat_test' && <ChatTestView config={config} getSystemContext={getSystemMemory} />}
               {activeTab === 'admin' && profile?.role === 'admin' && (
@@ -2886,6 +2893,326 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       </motion.div>
     </div>
       )}
+    </div>
+  );
+}
+
+function ObrasView({ works }: { works: Work[] }) {
+  const [showModal, setShowModal] = useState(false);
+  const [editingWork, setEditingWork] = useState<Work | null>(null);
+
+  // Form State
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [status, setStatus] = useState('');
+  const [isActive, setIsActive] = useState(true);
+  const [imageUrl, setImageUrl] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+    if (editingWork) {
+      setTitle(editingWork.title || '');
+      setDescription(editingWork.description || '');
+      setStatus(editingWork.status || '');
+      setIsActive(editingWork.isActive !== false);
+      setImageUrl(editingWork.imageUrl || '');
+      setShowModal(true);
+    } else {
+      setTitle('');
+      setDescription('');
+      setStatus('');
+      setIsActive(true);
+      setImageUrl('');
+    }
+  }, [editingWork]);
+
+  const openNew = () => { setEditingWork(null); setShowModal(true); };
+  const closeModal = () => { setShowModal(false); setEditingWork(null); };
+
+  const handleUploadWorkImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      alert('Formato de imagem inválido. Use PNG, JPEG, WEBP ou GIF.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      alert('Imagem muito grande. O tamanho máximo permitido é 5 MB.');
+      e.target.value = '';
+      return;
+    }
+    setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      const storageRef = ref(storage, `works/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(Math.round(progress));
+        },
+        (error) => {
+          console.error(error);
+          alert('Erro no upload da imagem da obra: ' + error.message);
+          setIsUploading(false);
+          setUploadProgress(null);
+        },
+        async () => {
+          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          setImageUrl(downloadUrl);
+          setIsUploading(false);
+          setUploadProgress(null);
+        }
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao iniciar upload da imagem da obra: ' + err.message);
+      setIsUploading(false);
+      setUploadProgress(null);
+    }
+  };
+
+  const handleSaveWork = async () => {
+    if (!title) return;
+    setIsSaving(true);
+    const workData: Partial<Work> = {
+      title,
+      description,
+      status,
+      isActive,
+      imageUrl,
+    };
+
+    if (editingWork?.id) {
+      await firestoreService.updateDocument('works', editingWork.id, workData);
+    } else {
+      await firestoreService.addDocument('works', {
+        ...workData,
+        createdAt: new Date().toISOString(),
+      } as Work);
+    }
+
+    setIsSaving(false);
+    closeModal();
+  };
+
+  const handleDeleteWork = async () => {
+    if (!editingWork?.id) return;
+    if (confirm('Tem certeza que deseja excluir esta obra?')) {
+      setIsSaving(true);
+      await firestoreService.deleteDocument('works', editingWork.id);
+      setIsSaving(false);
+      closeModal();
+    }
+  };
+
+  return (
+    <div className="space-y-8 h-full flex flex-col">
+      {/* Header */}
+      <div className="flex justify-between items-center bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+        <header>
+          <h3 className="text-2xl font-serif font-bold text-gray-900">Obras e Projetos</h3>
+          <p className="text-xs text-gray-500 font-medium">Reformas, construções e projetos da paróquia</p>
+        </header>
+
+        <button
+          onClick={openNew}
+          className="bg-[#5A5A40] text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:shadow-lg transition-all"
+        >
+          <Plus className="w-5 h-5" /> Nova Obra
+        </button>
+      </div>
+
+      {/* Grid */}
+      {works.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-3xl border border-gray-100 shadow-sm p-12 text-center">
+          <div className="w-16 h-16 bg-[#5A5A40]/10 rounded-2xl flex items-center justify-center mb-4">
+            <HardHat className="w-8 h-8 text-[#5A5A40]" />
+          </div>
+          <h4 className="text-lg font-serif font-bold text-gray-900 mb-1">Nenhuma obra cadastrada</h4>
+          <p className="text-sm text-gray-500 mb-6">Cadastre reformas e projetos para exibi-los na landing page.</p>
+          <button
+            onClick={openNew}
+            className="bg-[#5A5A40] text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:shadow-lg transition-all"
+          >
+            <Plus className="w-5 h-5" /> Nova Obra
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {works.map((work) => (
+            <motion.button
+              key={work.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onClick={() => setEditingWork(work)}
+              className="text-left bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-all group flex flex-col"
+            >
+              <div className="relative h-40 bg-gray-50 overflow-hidden">
+                {work.imageUrl ? (
+                  <img src={work.imageUrl} alt={work.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <HardHat className="w-10 h-10 text-gray-300" />
+                  </div>
+                )}
+                <span className={cn(
+                  "absolute top-3 right-3 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                  work.isActive === false
+                    ? "bg-gray-100 text-gray-400"
+                    : "bg-emerald-100 text-emerald-700"
+                )}>
+                  {work.isActive === false ? 'Inativa' : 'Ativa'}
+                </span>
+              </div>
+              <div className="p-5 flex-1 flex flex-col">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h4 className="font-serif font-bold text-gray-900 leading-tight">{work.title}</h4>
+                </div>
+                {work.status && (
+                  <span className="self-start mb-2 px-3 py-1 rounded-full bg-[#5A5A40]/10 text-[#5A5A40] text-[10px] font-bold uppercase tracking-widest">
+                    {work.status}
+                  </span>
+                )}
+                {work.description && (
+                  <p className="text-sm text-gray-500 line-clamp-3">{work.description}</p>
+                )}
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      )}
+
+      {/* Modal */}
+      <AnimatePresence>
+        {showModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="w-full max-w-lg bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#5A5A40] rounded-xl flex items-center justify-center shadow-lg shadow-[#5A5A40]/20">
+                    <HardHat className="w-5 h-5 text-white" />
+                  </div>
+                  <h3 className="text-xl font-serif font-bold text-gray-900">
+                    {editingWork ? 'Editar Obra' : 'Nova Obra'}
+                  </h3>
+                </div>
+                <button onClick={closeModal} className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Título</label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={e => setTitle(e.target.value)}
+                    placeholder="Ex: Reforma do Lar dos Idosos"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Descrição</label>
+                  <textarea
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    rows={3}
+                    placeholder="Detalhes da obra, objetivos, andamento..."
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10 resize-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Status</label>
+                  <input
+                    type="text"
+                    value={status}
+                    onChange={e => setStatus(e.target.value)}
+                    placeholder="Planejamento / Em andamento / Concluída"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Imagem da Obra</label>
+                  <div className="flex items-center gap-4">
+                    {imageUrl && (
+                      <div className="w-16 h-16 rounded-xl border border-gray-100 overflow-hidden shrink-0">
+                        <img src={imageUrl} alt="Imagem da obra" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleUploadWorkImage}
+                        disabled={isUploading}
+                        className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#5A5A40]/10 file:text-[#5A5A40] hover:file:bg-[#5A5A40]/20"
+                      />
+                      {isUploading && (
+                        <div className="w-full bg-gray-100 h-2 rounded-full mt-2 overflow-hidden">
+                          <div className="bg-[#5A5A40] h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                        </div>
+                      )}
+                      {uploadProgress !== null && (
+                        <p className="text-[10px] text-gray-400 mt-1">Carregando: {uploadProgress}%</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                  <input
+                    type="checkbox"
+                    id="work-active"
+                    checked={isActive}
+                    onChange={e => setIsActive(e.target.checked)}
+                    className="accent-[#5A5A40] w-5 h-5"
+                  />
+                  <label htmlFor="work-active" className="flex-1 text-sm font-bold text-emerald-900 cursor-pointer">
+                    Ativa (exibir na landing)
+                    <span className="block text-[10px] font-medium opacity-70">Quando marcada, a obra aparece na página pública.</span>
+                  </label>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  {editingWork?.id && (
+                    <button
+                      onClick={handleDeleteWork}
+                      disabled={isSaving || isUploading}
+                      className="flex-1 border-2 border-red-100 text-red-500 py-4 rounded-xl font-bold hover:bg-red-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      <Trash2 className="w-4 h-4" /> Excluir
+                    </button>
+                  )}
+                  <button
+                    onClick={handleSaveWork}
+                    disabled={isSaving || isUploading || !title}
+                    className="flex-[2] bg-[#5A5A40] text-white py-4 rounded-xl font-bold hover:bg-[#4A4A35] transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#5A5A40]/20 disabled:opacity-50"
+                  >
+                    {isSaving ? <Clock className="w-4 h-4 animate-spin" /> : editingWork ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    {isSaving ? 'Salvando...' : editingWork ? 'Salvar Alterações' : 'Cadastrar Obra'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -151,5 +151,18 @@ service cloud.firestore {
       return data.keys().hasAll(['title', 'date', 'location']) &&
              data.title is string && data.title.size() <= 200;
     }
+
+    // Works (Obras Paroquiais) Rules — cadastradas pelo admin
+    match /works/{workId} {
+      allow read: if isAuthorized();
+      allow create: if isAdmin() && isValidWork(incoming());
+      allow update: if isAdmin() && isValidWork(incoming());
+      allow delete: if isAdmin();
+    }
+
+    function isValidWork(data) {
+      return data.keys().hasAll(['title']) &&
+             data.title is string && data.title.size() <= 200;
+    }
   }
 }

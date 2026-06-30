@@ -300,9 +300,16 @@ async function startServer() {
         ...doc.data()
       }));
 
+      // 3. Busca as obras paroquiais ativas (isActive !== false)
+      const worksSnap = await adminDb.collection("works").get();
+      const works = worksSnap.docs
+        .map(doc => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) }))
+        .filter((w: any) => w.isActive !== false);
+
       res.status(200).json({
         config,
-        events
+        events,
+        works
       });
     } catch (error) {
       console.error("Error in GET /api/public/landing:", error);
