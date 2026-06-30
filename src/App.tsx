@@ -30,7 +30,9 @@ import {
   Play,
   Bot,
   Check,
-  Paperclip
+  Paperclip,
+  MapPin,
+  Pencil
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -52,7 +54,7 @@ import {
   LineChart, 
   Line
 } from 'recharts';
-import { format, addMonths, subMonths } from 'date-fns';
+import { format, addMonths, subMonths, addDays, subDays, startOfWeek, endOfWeek, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import ReactMarkdown from 'react-markdown';
 import { orderBy } from 'firebase/firestore';
@@ -861,11 +863,12 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Logo / Imagem de Capa (Paróquia)</label>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Imagem de fundo da landing page</label>
+              <p className="text-[11px] text-gray-400 px-1 -mt-1">Esta imagem é usada como plano de fundo (hero) da página pública da paróquia.</p>
               <div className="flex items-center gap-4">
                 {heroImageUrl && (
                   <div className="w-16 h-16 rounded-xl border border-gray-100 overflow-hidden shrink-0">
-                    <img src={heroImageUrl} alt="Logo da paróquia" className="w-full h-full object-cover" />
+                    <img src={heroImageUrl} alt="Imagem de fundo da landing page" className="w-full h-full object-cover" />
                   </div>
                 )}
                 <div className="flex-1">
@@ -2023,6 +2026,7 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
   const [editingEvent, setEditingEvent] = useState<ChurchEvent | null>(null);
   const [selectedInstanceDate, setSelectedInstanceDate] = useState<string | null>(null);
   const [showRecurrenceChoice, setShowRecurrenceChoice] = useState(false);
+  const [summaryEvent, setSummaryEvent] = useState<ChurchEvent | null>(null);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -2213,6 +2217,76 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
     });
   };
 
+  const weekDayNames = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+
+  const weekDays = (d: Date) => {
+    const start = startOfWeek(d, { weekStartsOn: 0 });
+    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  };
+
+  // Período exibido no cabeçalho, sensível à visão atual
+  const periodLabel = () => {
+    if (view === 'month') return format(currentDate, 'MMMM yyyy', { locale: ptBR });
+    if (view === 'week') {
+      const ws = startOfWeek(currentDate, { weekStartsOn: 0 });
+      const we = endOfWeek(currentDate, { weekStartsOn: 0 });
+      return `${format(ws, 'dd', { locale: ptBR })}–${format(we, 'dd MMM', { locale: ptBR })}`;
+    }
+    return format(currentDate, 'EEEE, dd MMM yyyy', { locale: ptBR });
+  };
+
+  // Navegação sensível à visão: mês → ±1 mês, semana → ±7 dias, dia → ±1 dia
+  const goPrev = () => {
+    if (view === 'month') setCurrentDate(subMonths(currentDate, 1));
+    else if (view === 'week') setCurrentDate(subDays(currentDate, 7));
+    else setCurrentDate(subDays(currentDate, 1));
+  };
+  const goNext = () => {
+    if (view === 'month') setCurrentDate(addMonths(currentDate, 1));
+    else if (view === 'week') setCurrentDate(addDays(currentDate, 7));
+    else setCurrentDate(addDays(currentDate, 1));
+  };
+
+  // Horário a exibir para um evento (pontual ou recorrente)
+  const eventTime = (ev: ChurchEvent) => ev.isRecurring
+    ? (ev.recurrenceTime || ev.startTime || '')
+    : (ev.startTime || format(new Date(ev.date), 'HH:mm'));
+
+  // Cores consistentes por tipo: recorrente → roxo, pontual → verde
+  const eventColor = (ev: ChurchEvent) => ev.isRecurring
+    ? "bg-purple-50 text-purple-700 border-purple-100 hover:bg-purple-100"
+    : "bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100";
+
+  // Abre o modal de resumo (somente leitura), preservando a instância recorrente
+  const openSummary = (ev: ChurchEvent, d?: Date) => {
+    if (ev.isRecurring && d) setSelectedInstanceDate(format(d, 'yyyy-MM-dd'));
+    else setSelectedInstanceDate(null);
+    setSummaryEvent(ev);
+  };
+
+  // A partir do resumo, parte para o fluxo de edição existente
+  const editFromSummary = () => {
+    if (summaryEvent) setEditingEvent(summaryEvent); // useEffect abre o modal de formulário
+    setSummaryEvent(null);
+  };
+
+  const closeSummary = () => {
+    setSummaryEvent(null);
+    setSelectedInstanceDate(null);
+  };
+
+  // Texto de data/horário exibido no resumo
+  const summaryWhen = (ev: ChurchEvent) => {
+    if (ev.isRecurring) {
+      return `Toda(o) ${weekDayNames[ev.recurrenceDay ?? 0]} às ${ev.recurrenceTime || ev.startTime || ''}`;
+    }
+    const dateLabel = format(new Date(ev.date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+    const timeLabel = (ev.startTime && ev.endTime)
+      ? `${ev.startTime} – ${ev.endTime}`
+      : (ev.startTime || format(new Date(ev.date), 'HH:mm'));
+    return `${dateLabel} • ${timeLabel}`;
+  };
+
   return (
     <div className="space-y-8 h-full flex flex-col">
       <div className="flex justify-between items-center bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
@@ -2236,17 +2310,29 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                </button>
              ))}
           </div>
+
+          {/* Legenda de cores por tipo de evento */}
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+              <span className="w-2.5 h-2.5 rounded-full bg-purple-400 border border-purple-200"></span>
+              Recorrente
+            </span>
+            <span className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 border border-emerald-200"></span>
+              Específico
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-4">
            <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl">
-             <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-white rounded-lg transition-colors">
+             <button onClick={goPrev} className="p-2 hover:bg-white rounded-lg transition-colors">
                <ChevronLeft className="w-4 h-4 text-[#5A5A40]" />
              </button>
-             <span className="px-4 font-bold text-sm min-w-[140px] text-center">
-               {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
+             <span className="px-4 font-bold text-sm min-w-[160px] text-center capitalize">
+               {periodLabel()}
              </span>
-             <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-2 hover:bg-white rounded-lg transition-colors">
+             <button onClick={goNext} className="p-2 hover:bg-white rounded-lg transition-colors">
                <ChevronRight className="w-4 h-4 text-[#5A5A40]" />
              </button>
            </div>
@@ -2285,23 +2371,16 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                     </span>
                     <div className="space-y-1">
                       {getDayEvents(d).map((ev, idx) => (
-                        <button 
-                          key={idx} 
-                          onClick={() => {
-                            setEditingEvent(ev);
-                            if (ev.isRecurring) setSelectedInstanceDate(format(d, 'yyyy-MM-dd'));
-                          }}
+                        <button
+                          key={idx}
+                          onClick={() => openSummary(ev, d)}
                           className={cn(
                             "w-full text-left px-2 py-1 rounded-md text-[9px] font-bold truncate border transition-all hover:scale-[1.02] active:scale-[0.98]",
-                            ev.isRecurring 
-                              ? "bg-purple-50 text-purple-700 border-purple-100" 
-                              : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                            eventColor(ev)
                           )}
                         >
                           {ev.isRecurring && <Clock className="w-2 h-2 inline mr-1" />}
-                          {ev.isRecurring
-                            ? (ev.recurrenceTime || ev.startTime)
-                            : (ev.startTime || format(new Date(ev.date), 'HH:mm'))} {ev.title}
+                          {eventTime(ev)} {ev.title}
                         </button>
                       ))}
                     </div>
@@ -2313,14 +2392,178 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
         </div>
       )}
 
-      {(view === 'week' || view === 'day') && (
-        <div className="flex-1 bg-white rounded-3xl border border-gray-100 shadow-sm p-12 text-center flex flex-col items-center justify-center space-y-4">
-           <div className="p-4 bg-[#5A5A40]/10 rounded-full">
-             <Calendar className="w-12 h-12 text-[#5A5A40]" />
-           </div>
-           <h4 className="text-xl font-bold">Visão em Implementação</h4>
-           <p className="text-gray-500 max-w-sm">Estamos otimizando as visões semanais e diárias para facilitar a escala litúrgica. Use a visão mensal por enquanto.</p>
-           <button onClick={() => setView('month')} className="text-[#5A5A40] font-bold border-b-2 border-[#5A5A40]">Voltar para Mensal</button>
+      {view === 'week' && (
+        <div className="flex-1 bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+          <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/50">
+            {weekDays(currentDate).map((d) => (
+              <div key={d.toISOString()} className="py-3 text-center border-r border-gray-50 last:border-r-0">
+                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                  {format(d, 'EEE', { locale: ptBR })}
+                </div>
+                <div className={cn(
+                  "text-sm font-bold mt-1 mx-auto w-7 h-7 flex items-center justify-center rounded-full",
+                  isSameDay(d, new Date()) ? "bg-[#5A5A40] text-white" : "text-gray-600"
+                )}>
+                  {d.getDate()}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex-1 grid grid-cols-7 overflow-y-auto">
+            {weekDays(currentDate).map((d) => {
+              const dayEvents = getDayEvents(d);
+              return (
+                <div key={d.toISOString()} className="min-h-[300px] p-2 border-r border-gray-50 last:border-r-0 space-y-1.5">
+                  {dayEvents.length === 0 ? (
+                    <p className="text-[9px] text-gray-300 text-center mt-6">—</p>
+                  ) : dayEvents.map((ev, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => openSummary(ev, d)}
+                      className={cn(
+                        "w-full text-left px-2 py-1.5 rounded-lg text-[10px] font-bold border transition-all hover:scale-[1.02] active:scale-[0.98]",
+                        eventColor(ev)
+                      )}
+                    >
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-2.5 h-2.5 shrink-0" />
+                        {eventTime(ev)}
+                      </span>
+                      <span className="block truncate mt-0.5">{ev.title}</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {view === 'day' && (
+        <div className="flex-1 bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+          <div className="px-8 py-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+            <div>
+              <h4 className="text-lg font-serif font-bold text-gray-900 capitalize">
+                {format(currentDate, 'EEEE', { locale: ptBR })}
+              </h4>
+              <p className="text-xs text-gray-500">
+                {format(currentDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+              </p>
+            </div>
+            {isSameDay(currentDate, new Date()) && (
+              <span className="px-3 py-1 bg-[#5A5A40] text-white rounded-full text-[10px] font-black uppercase tracking-widest">Hoje</span>
+            )}
+          </div>
+          <div className="flex-1 overflow-y-auto p-6 space-y-3">
+            {getDayEvents(currentDate).length === 0 ? (
+              <div className="h-full min-h-[240px] flex flex-col items-center justify-center text-center space-y-3">
+                <div className="p-4 bg-gray-50 rounded-full">
+                  <Calendar className="w-10 h-10 text-gray-300" />
+                </div>
+                <p className="text-gray-400 text-sm font-medium">Nenhum evento agendado para este dia.</p>
+              </div>
+            ) : getDayEvents(currentDate).map((ev, idx) => (
+              <button
+                key={idx}
+                onClick={() => openSummary(ev, currentDate)}
+                className="w-full flex items-stretch gap-4 text-left group"
+              >
+                <div className="w-16 shrink-0 pt-1 text-right">
+                  <span className="text-sm font-bold text-gray-700">{eventTime(ev)}</span>
+                </div>
+                <div className={cn("w-1 rounded-full shrink-0", ev.isRecurring ? "bg-purple-300" : "bg-emerald-300")}></div>
+                <div className={cn(
+                  "flex-1 rounded-2xl border p-4 transition-all group-hover:shadow-sm",
+                  eventColor(ev)
+                )}>
+                  <div className="flex items-center gap-2">
+                    {ev.isRecurring && <Clock className="w-3.5 h-3.5 shrink-0" />}
+                    <span className="font-bold text-sm">{ev.title}</span>
+                  </div>
+                  {ev.location && (
+                    <span className="flex items-center gap-1 text-xs opacity-80 mt-1">
+                      <MapPin className="w-3 h-3 shrink-0" /> {ev.location}
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Summary Modal (somente leitura) */}
+      {summaryEvent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border border-gray-100"
+          >
+            {summaryEvent.imageUrl ? (
+              <div className="relative h-44 w-full">
+                <img src={summaryEvent.imageUrl} alt={summaryEvent.title} className="w-full h-full object-cover" />
+                <button
+                  onClick={closeSummary}
+                  className="absolute top-3 right-3 p-2 bg-black/40 text-white rounded-full hover:bg-black/60 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            ) : (
+              <header className="p-6 bg-[#5A5A40] text-white flex justify-between items-center">
+                <p className="text-[10px] text-white/70 uppercase tracking-widest font-black">Detalhes do Evento</p>
+                <button onClick={closeSummary} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </header>
+            )}
+
+            <div className="p-8 space-y-5">
+              <span className={cn(
+                "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
+                summaryEvent.isRecurring
+                  ? "bg-purple-50 text-purple-700 border-purple-100"
+                  : "bg-emerald-50 text-emerald-700 border-emerald-100"
+              )}>
+                <span className={cn("w-2 h-2 rounded-full", summaryEvent.isRecurring ? "bg-purple-400" : "bg-emerald-400")}></span>
+                {summaryEvent.isRecurring ? 'Recorrente' : 'Específico'}
+              </span>
+
+              <h4 className="text-2xl font-serif font-bold text-gray-900">{summaryEvent.title}</h4>
+
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <Clock className="w-4 h-4 text-[#5A5A40] mt-0.5 shrink-0" />
+                  <span className="text-sm text-gray-700 capitalize">{summaryWhen(summaryEvent)}</span>
+                </div>
+                {summaryEvent.location && (
+                  <div className="flex items-start gap-3">
+                    <MapPin className="w-4 h-4 text-[#5A5A40] mt-0.5 shrink-0" />
+                    <span className="text-sm text-gray-700">{summaryEvent.location}</span>
+                  </div>
+                )}
+                {summaryEvent.description && (
+                  <p className="text-sm text-gray-500 leading-relaxed whitespace-pre-line pt-1">{summaryEvent.description}</p>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={closeSummary}
+                  className="flex-1 border-2 border-gray-100 text-gray-500 py-3 rounded-xl font-bold hover:bg-gray-50 transition-all"
+                >
+                  Fechar
+                </button>
+                <button
+                  onClick={editFromSummary}
+                  className="flex-[2] bg-[#5A5A40] text-white py-3 rounded-xl font-bold hover:bg-[#4A4A35] transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#5A5A40]/20"
+                >
+                  <Pencil className="w-4 h-4" /> Editar
+                </button>
+              </div>
+            </div>
+          </motion.div>
         </div>
       )}
 
