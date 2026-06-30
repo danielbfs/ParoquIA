@@ -1,0 +1,17 @@
+rules_version = '2';
+
+// Imagens públicas da paróquia (logo/hero + imagens de eventos).
+// Leitura pública (a landing exibe via <img>); escrita só por usuário autenticado
+// (o admin no painel), limitada a imagens de até 5 MB — defesa em profundidade
+// alinhada à validação do cliente. Comprovantes de pagamento NÃO ficam aqui
+// (são servidos localmente em /media), então leitura pública é aceitável.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+  }
+}
