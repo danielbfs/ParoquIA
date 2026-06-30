@@ -2027,6 +2027,7 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
   const [selectedInstanceDate, setSelectedInstanceDate] = useState<string | null>(null);
   const [showRecurrenceChoice, setShowRecurrenceChoice] = useState(false);
   const [summaryEvent, setSummaryEvent] = useState<ChurchEvent | null>(null);
+  const [zoomedImg, setZoomedImg] = useState<string | null>(null);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -2502,7 +2503,13 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
           >
             {summaryEvent.imageUrl ? (
               <div className="relative h-44 w-full">
-                <img src={summaryEvent.imageUrl} alt={summaryEvent.title} className="w-full h-full object-cover" />
+                <img
+                  src={summaryEvent.imageUrl}
+                  alt={summaryEvent.title}
+                  onClick={() => setZoomedImg(summaryEvent.imageUrl!)}
+                  title="Clique para ver a imagem inteira"
+                  className="w-full h-full object-cover cursor-zoom-in"
+                />
                 <button
                   onClick={closeSummary}
                   className="absolute top-3 right-3 p-2 bg-black/40 text-white rounded-full hover:bg-black/60 transition-colors"
@@ -2564,6 +2571,28 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
               </div>
             </div>
           </motion.div>
+        </div>
+      )}
+
+      {/* Lightbox: imagem do evento inteira/original */}
+      {zoomedImg && (
+        <div
+          onClick={() => setZoomedImg(null)}
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 cursor-zoom-out"
+        >
+          <button
+            onClick={() => setZoomedImg(null)}
+            aria-label="Fechar imagem"
+            className="absolute top-4 right-4 p-2 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={zoomedImg}
+            alt="Imagem do evento"
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+          />
         </div>
       )}
 

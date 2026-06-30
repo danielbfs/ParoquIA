@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Calendar, MapPin, Clock, X } from 'lucide-react';
 import { Event as ChurchEvent } from '../../types'; // Note: path will be adjusted when copying to the final src directory
@@ -32,7 +32,9 @@ const formatTimeRange = (event: ChurchEvent): string => {
 };
 
 export default function EventDetailModal({ event, onClose }: EventDetailModalProps) {
+  const [zoomed, setZoomed] = useState(false);
   return (
+    <>
     <AnimatePresence>
       {event && (
         <motion.div
@@ -59,15 +61,17 @@ export default function EventDetailModal({ event, onClose }: EventDetailModalPro
               <X className="w-5 h-5" />
             </button>
 
-            {/* Imagem */}
+            {/* Imagem (clique abre inteira/original) */}
             {event.imageUrl && (
               <div className="relative h-56 overflow-hidden">
                 <img
                   src={event.imageUrl}
                   alt={event.title}
-                  className="w-full h-full object-cover"
+                  onClick={() => setZoomed(true)}
+                  title="Clique para ver a imagem inteira"
+                  className="w-full h-full object-cover cursor-zoom-in"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
                 {event.isRecurring && (
                   <div className="absolute top-4 left-4 bg-purple-600 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full shadow-md">
                     Recorrente
@@ -125,5 +129,36 @@ export default function EventDetailModal({ event, onClose }: EventDetailModalPro
         </motion.div>
       )}
     </AnimatePresence>
+
+    {/* Lightbox: imagem inteira/original */}
+    <AnimatePresence>
+      {zoomed && event?.imageUrl && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => setZoomed(false)}
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 cursor-zoom-out"
+        >
+          <button
+            onClick={() => setZoomed(false)}
+            aria-label="Fechar imagem"
+            className="absolute top-4 right-4 z-10 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <motion.img
+            initial={{ scale: 0.92 }}
+            animate={{ scale: 1 }}
+            exit={{ scale: 0.92 }}
+            src={event.imageUrl}
+            alt={event.title}
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
   );
 }
