@@ -93,6 +93,17 @@ export interface Event {
   imageUrl?: string;       // imagem do evento
   startTime?: string;      // "HH:mm" - início
   endTime?: string;        // "HH:mm" - fim
+  allowDonation?: boolean; // habilita doação/pagamento (PIX) para este evento
+}
+
+export interface Work {
+  id?: string;
+  title: string;           // ex.: "Reforma do Lar dos Idosos"
+  description?: string;
+  imageUrl?: string;       // foto da obra/projeto
+  status?: string;         // ex.: "Planejamento", "Em andamento", "Concluída"
+  isActive?: boolean;      // exibir na landing (padrão: exibir)
+  createdAt?: string;
 }
 
 export interface UserProfile {
@@ -126,5 +137,7 @@ export interface SystemConfig {
   phone?: string;          // telefone
   email?: string;          // e-mail exibido
   contactEmailTo?: string; // destino do formulário de contato
+  pixKey?: string;         // chave PIX da paróquia (exibida nas doações de eventos)
+  whatsappNumber?: string; // WhatsApp da paróquia (envio de comprovante)
 }
 

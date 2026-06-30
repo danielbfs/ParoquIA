@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Calendar, MapPin, Clock, X } from 'lucide-react';
+import { Calendar, MapPin, Clock, X, HandHeart } from 'lucide-react';
 import { Event as ChurchEvent } from '../../types'; // Note: path will be adjusted when copying to the final src directory
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import DonationModal from './DonationModal';
 
 interface EventDetailModalProps {
   event: ChurchEvent | null;
   onClose: () => void;
+  pixKey?: string;
+  whatsappNumber?: string;
 }
 
 const WEEK_DAY_NAMES = [
@@ -31,8 +34,9 @@ const formatTimeRange = (event: ChurchEvent): string => {
   return time || '';
 };
 
-export default function EventDetailModal({ event, onClose }: EventDetailModalProps) {
+export default function EventDetailModal({ event, onClose, pixKey, whatsappNumber }: EventDetailModalProps) {
   const [zoomed, setZoomed] = useState(false);
+  const [donationOpen, setDonationOpen] = useState(false);
   return (
     <>
     <AnimatePresence>
@@ -124,11 +128,34 @@ export default function EventDetailModal({ event, onClose }: EventDetailModalPro
                   {event.description}
                 </p>
               )}
+
+              {/* Botão de doação/pagamento (PIX) */}
+              {event.allowDonation && (
+                <button
+                  type="button"
+                  onClick={() => setDonationOpen(true)}
+                  className="mt-6 w-full flex items-center justify-center gap-2 bg-[#5A5A40] hover:bg-[#4a4a34] text-white font-bold py-3.5 rounded-2xl transition-all active:scale-[0.98] shadow-lg shadow-[#5A5A40]/20"
+                >
+                  <HandHeart className="w-5 h-5" />
+                  Doar / Pagar
+                </button>
+              )}
             </div>
           </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
+
+    {/* Modal de doação (PIX + WhatsApp) */}
+    {event && (
+      <DonationModal
+        open={donationOpen}
+        onClose={() => setDonationOpen(false)}
+        eventTitle={event.title}
+        pixKey={pixKey}
+        whatsappNumber={whatsappNumber}
+      />
+    )}
 
     {/* Lightbox: imagem inteira/original */}
     <AnimatePresence>

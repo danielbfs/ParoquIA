@@ -133,10 +133,10 @@ export default function LandingPage() {
       <Hero config={config} />
 
       {/* Events Section */}
-      <EventsSection events={events} />
+      <EventsSection events={events} pixKey={config.pixKey} whatsappNumber={config.whatsappNumber} />
 
       {/* Monthly Calendar Section */}
-      <EventCalendar events={events} />
+      <EventCalendar events={events} pixKey={config.pixKey} whatsappNumber={config.whatsappNumber} />
 
       {/* Contact Section */}
       <ContactSection config={config} />

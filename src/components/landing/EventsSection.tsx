@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { Calendar, MapPin, Clock, Repeat } from 'lucide-react';
+import { Calendar, MapPin, Clock, Repeat, HandHeart } from 'lucide-react';
 import { Event as ChurchEvent } from '../../types'; // Note: path will be adjusted when copying to the final src directory
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -8,6 +8,8 @@ import EventDetailModal from './EventDetailModal';
 
 interface EventsSectionProps {
   events: ChurchEvent[];
+  pixKey?: string;
+  whatsappNumber?: string;
 }
 
 const getWeekDayName = (dayNum: number) => {
@@ -15,7 +17,7 @@ const getWeekDayName = (dayNum: number) => {
   return days[dayNum] || '';
 };
 
-export default function EventsSection({ events }: EventsSectionProps) {
+export default function EventsSection({ events, pixKey, whatsappNumber }: EventsSectionProps) {
   const [selectedEvent, setSelectedEvent] = useState<ChurchEvent | null>(null);
 
   // Eventos específicos (pontuais e futuros), ordenados cronologicamente
@@ -109,6 +111,12 @@ export default function EventsSection({ events }: EventsSectionProps) {
                         <div className="absolute top-4 right-4 bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full shadow-md">
                           Evento Especial
                         </div>
+                        {event.allowDonation && (
+                          <div className="absolute top-4 left-4 bg-[#5A5A40] text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full shadow-md flex items-center gap-1">
+                            <HandHeart className="w-3 h-3" />
+                            Doação
+                          </div>
+                        )}
                       </div>
 
                       {/* Event Details */}
@@ -219,7 +227,12 @@ export default function EventsSection({ events }: EventsSectionProps) {
       </div>
 
       {/* Modal de resumo do evento */}
-      <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      <EventDetailModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        pixKey={pixKey}
+        whatsappNumber={whatsappNumber}
+      />
     </section>
   );
 }

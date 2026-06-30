@@ -20,11 +20,13 @@ import EventDetailModal from './EventDetailModal';
 
 interface EventCalendarProps {
   events: ChurchEvent[];
+  pixKey?: string;
+  whatsappNumber?: string;
 }
 
 type CalendarView = 'month' | 'week' | 'day';
 
-export default function EventCalendar({ events }: EventCalendarProps) {
+export default function EventCalendar({ events, pixKey, whatsappNumber }: EventCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<CalendarView>('month');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -411,7 +413,12 @@ export default function EventCalendar({ events }: EventCalendarProps) {
       </div>
 
       {/* Modal de resumo do evento */}
-      <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      <EventDetailModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        pixKey={pixKey}
+        whatsappNumber={whatsappNumber}
+      />
     </section>
   );
 }

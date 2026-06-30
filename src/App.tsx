@@ -503,6 +503,8 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
   const [address, setAddress] = useState(config?.address || '');
   const [phone, setPhone] = useState(config?.phone || '');
   const [email, setEmail] = useState(config?.email || '');
+  const [pixKey, setPixKey] = useState(config?.pixKey || '');
+  const [whatsappNumber, setWhatsappNumber] = useState(config?.whatsappNumber || '');
   const [heroImageUrl, setHeroImageUrl] = useState(config?.heroImageUrl || '');
   // Mesma imagem padrão do Hero.tsx — usada quando não há imagem personalizada salva.
   const DEFAULT_HERO_IMAGE = 'https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&w=1920&q=80';
@@ -595,6 +597,8 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
       setAddress(config.address || '');
       setPhone(config.phone || '');
       setEmail(config.email || '');
+      setPixKey(config.pixKey || '');
+      setWhatsappNumber(config.whatsappNumber || '');
       setHeroImageUrl(config.heroImageUrl || '');
     }
   }, [config]);
@@ -743,6 +747,8 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
       address,
       phone,
       email,
+      pixKey,
+      whatsappNumber,
       heroImageUrl,
       updatedAt: new Date().toISOString()
     };
@@ -862,6 +868,29 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
                 placeholder="Rua da Igreja, 123 - Centro"
               />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Chave PIX</label>
+                <input
+                  type="text"
+                  value={pixKey}
+                  onChange={e => setPixKey(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                  placeholder="CNPJ, e-mail, telefone ou aleatória"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">WhatsApp da paróquia</label>
+                <input
+                  type="text"
+                  value={whatsappNumber}
+                  onChange={e => setWhatsappNumber(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                  placeholder="+55 31 99999-9999 — recebe os comprovantes"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -2058,6 +2087,7 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('09:00');
   const [imageUrl, setImageUrl] = useState('');
+  const [allowDonation, setAllowDonation] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -2073,6 +2103,7 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       setStartTime(editingEvent.startTime || '08:00');
       setEndTime(editingEvent.endTime || '09:00');
       setImageUrl(editingEvent.imageUrl || '');
+      setAllowDonation(!!editingEvent.allowDonation);
       setShowAddModal(true);
     } else {
       setTitle('');
@@ -2085,6 +2116,7 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       setStartTime('08:00');
       setEndTime('09:00');
       setImageUrl('');
+      setAllowDonation(false);
     }
   }, [editingEvent]);
 
@@ -2170,7 +2202,8 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       recurrenceTime: (mode === 'all' && isRecurring) ? time : undefined,
       startTime,
       endTime,
-      imageUrl
+      imageUrl,
+      allowDonation
     };
 
     if (editingEvent?.id) {
@@ -2788,6 +2821,20 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                 <label htmlFor="recurring" className="flex-1 text-sm font-bold text-purple-900 cursor-pointer">
                   Evento Recorrente (Atividade Fixa)
                   <span className="block text-[10px] font-medium opacity-70">Repetir semanalmente no mesmo dia/hora</span>
+                </label>
+              </div>
+
+              <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                <input
+                  type="checkbox"
+                  id="allowDonation"
+                  checked={allowDonation}
+                  onChange={e => setAllowDonation(e.target.checked)}
+                  className="accent-[#5A5A40] w-5 h-5"
+                />
+                <label htmlFor="allowDonation" className="flex-1 text-sm font-bold text-emerald-900 cursor-pointer">
+                  Permitir doação/pagamento (PIX) para este evento
+                  <span className="block text-[10px] font-medium opacity-70">Mostra um botão de doação na página pública deste evento.</span>
                 </label>
               </div>
 

@@ -288,6 +288,8 @@ async function startServer() {
             address: rawConfig.address ?? null,
             phone: rawConfig.phone ?? null,
             email: rawConfig.email ?? null,
+            pixKey: rawConfig.pixKey ?? null,
+            whatsappNumber: rawConfig.whatsappNumber ?? null,
           }
         : null;
 
