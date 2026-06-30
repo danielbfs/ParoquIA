@@ -106,7 +106,9 @@ export default function EventDetailModal({ event, onClose, pixKey, whatsappNumbe
                             ? ` às ${event.recurrenceTime || event.startTime}`
                             : ''
                         }`
-                      : format(new Date(event.date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                      : event.endDate
+                        ? `${format(new Date(event.date), "dd 'de' MMM", { locale: ptBR })} a ${format(new Date(event.endDate), "dd 'de' MMM 'de' yyyy", { locale: ptBR })}`
+                        : format(new Date(event.date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                   </span>
                 </div>
 

@@ -93,6 +93,7 @@ export interface Event {
   imageUrl?: string;       // imagem do evento
   startTime?: string;      // "HH:mm" - início
   endTime?: string;        // "HH:mm" - fim
+  endDate?: string;        // data final (eventos de vários dias); `date` é a inicial
   allowDonation?: boolean; // habilita doação/pagamento (PIX) para este evento
 }
 

@@ -28,9 +28,10 @@ export default function EventsSection({ events, pixKey, whatsappNumber }: Events
     return events
       .filter(event => {
         if (event.isRecurring) return false;
-        const eventDate = new Date(event.date);
-        eventDate.setHours(0, 0, 0, 0);
-        return eventDate >= today;
+        // Considera o fim (multi-dia): mantém visível enquanto o evento ainda ocorre.
+        const eff = new Date(event.endDate || event.date);
+        eff.setHours(0, 0, 0, 0);
+        return eff >= today;
       })
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [events]);
@@ -87,7 +88,9 @@ export default function EventsSection({ events, pixKey, whatsappNumber }: Events
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {specificEvents.map((event, index) => {
                   const eventBg = event.imageUrl || 'https://images.unsplash.com/photo-1544427920-c49ccfb85579?auto=format&fit=crop&w=800&q=80';
-                  const formattedDate = format(new Date(event.date), "dd 'de' MMMM", { locale: ptBR });
+                  const formattedDate = event.endDate
+                    ? `${format(new Date(event.date), "dd 'de' MMM", { locale: ptBR })} a ${format(new Date(event.endDate), "dd 'de' MMM", { locale: ptBR })}`
+                    : format(new Date(event.date), "dd 'de' MMMM", { locale: ptBR });
 
                   return (
                     <motion.button

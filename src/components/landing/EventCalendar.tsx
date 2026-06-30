@@ -49,12 +49,10 @@ export default function EventCalendar({ events, pixKey, whatsappNumber }: EventC
           const isExcluded = event.excludedDates?.includes(dateStr);
           return matchesDay && !isExcluded;
         } else {
-          const eventDate = new Date(event.date);
-          return (
-            eventDate.getDate() === date.getDate() &&
-            eventDate.getMonth() === date.getMonth() &&
-            eventDate.getFullYear() === date.getFullYear()
-          );
+          // Evento pontual: aparece em todos os dias do intervalo (date → endDate).
+          const startStr = format(new Date(event.date), 'yyyy-MM-dd');
+          const endStr = event.endDate ? format(new Date(event.endDate), 'yyyy-MM-dd') : startStr;
+          return dateStr >= startStr && dateStr <= endStr;
         }
       })
       .sort((a, b) => sortTime(a).localeCompare(sortTime(b)));

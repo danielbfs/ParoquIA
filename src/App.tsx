@@ -2095,6 +2095,7 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
   const [endTime, setEndTime] = useState('09:00');
   const [imageUrl, setImageUrl] = useState('');
   const [allowDonation, setAllowDonation] = useState(false);
+  const [endDate, setEndDate] = useState(''); // data final (evento de vários dias)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -2111,6 +2112,7 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       setEndTime(editingEvent.endTime || '09:00');
       setImageUrl(editingEvent.imageUrl || '');
       setAllowDonation(!!editingEvent.allowDonation);
+      setEndDate(editingEvent.endDate ? format(new Date(editingEvent.endDate), 'yyyy-MM-dd') : '');
       setShowAddModal(true);
     } else {
       setTitle('');
@@ -2124,6 +2126,7 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       setEndTime('09:00');
       setImageUrl('');
       setAllowDonation(false);
+      setEndDate('');
     }
   }, [editingEvent]);
 
@@ -2191,6 +2194,10 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       alert('O horário de término deve ser maior que o horário de início.');
       return;
     }
+    if (endDate && endDate < date) {
+      alert('A data final deve ser igual ou posterior à data inicial.');
+      return;
+    }
 
     // If editing a recurring event and choice not yet made
     if (editingEvent?.isRecurring && !showRecurrenceChoice && mode === 'all') {
@@ -2210,7 +2217,8 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       startTime,
       endTime,
       imageUrl,
-      allowDonation
+      allowDonation,
+      endDate: (!isRecurring && endDate) ? `${endDate}T${endTime || time}:00` : undefined
     };
 
     if (editingEvent?.id) {
@@ -2278,7 +2286,10 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
           const isExcluded = e.excludedDates?.includes(dStr);
           return matchesDay && !isExcluded;
         }
-        return format(new Date(e.date), 'yyyy-MM-dd') === dStr;
+        // Evento pontual: aparece em todos os dias do intervalo (date → endDate).
+        const startStr = format(new Date(e.date), 'yyyy-MM-dd');
+        const endStr = e.endDate ? format(new Date(e.endDate), 'yyyy-MM-dd') : startStr;
+        return dStr >= startStr && dStr <= endStr;
       })
       .sort((a, b) => eventSortTime(a).localeCompare(eventSortTime(b)));
   };
@@ -2346,7 +2357,9 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
     if (ev.isRecurring) {
       return `Toda(o) ${weekDayNames[ev.recurrenceDay ?? 0]} às ${ev.recurrenceTime || ev.startTime || ''}`;
     }
-    const dateLabel = format(new Date(ev.date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+    const dateLabel = ev.endDate
+      ? `${format(new Date(ev.date), "dd 'de' MMM", { locale: ptBR })} a ${format(new Date(ev.endDate), "dd 'de' MMM 'de' yyyy", { locale: ptBR })}`
+      : format(new Date(ev.date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
     const timeLabel = (ev.startTime && ev.endTime)
       ? `${ev.startTime} – ${ev.endTime}`
       : (ev.startTime || format(new Date(ev.date), 'HH:mm'));
@@ -2766,6 +2779,34 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                   />
                 </div>
               </div>
+
+              {/* Data final (evento de vários dias) — apenas para eventos pontuais */}
+              {!isRecurring && (
+                !endDate ? (
+                  <button
+                    type="button"
+                    onClick={() => setEndDate(date)}
+                    className="text-xs font-bold text-[#5A5A40] flex items-center gap-1 hover:underline"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Adicionar data final (evento de vários dias)
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Data final</label>
+                      <button type="button" onClick={() => setEndDate('')} className="text-[10px] font-bold text-red-400 hover:underline">remover</button>
+                    </div>
+                    <input
+                      type="date"
+                      value={endDate}
+                      min={date}
+                      onChange={e => setEndDate(e.target.value)}
+                      className="w-full px-2 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none text-xs"
+                    />
+                    <p className="text-[10px] text-gray-400 px-1">O evento aparecerá em todos os dias entre a data inicial e a final.</p>
+                  </div>
+                )
+              )}
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Local</label>
