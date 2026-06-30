@@ -236,7 +236,10 @@ function PastoralPanel() {
       unsubCritiques();
       unsubConfig();
     };
-  }, [user]);
+    // Depende de `profile` também: no login o `user` é setado antes do `profile`
+    // (buscado async). Sem isto, o efeito roda com profile=null, a guarda
+    // retorna cedo e as assinaturas nunca são criadas (app sem dados, sem erro).
+  }, [user, profile]);
 
   const getSystemMemory = () => {
     const singleEvents = events.filter(e => !e.isRecurring).slice(0, 5).map(e => `- ${e.title} em ${format(new Date(e.date), 'dd/MM/yyyy')} no local ${e.location}`).join('\n');
