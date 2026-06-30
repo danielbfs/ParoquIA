@@ -504,6 +504,8 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
   const [phone, setPhone] = useState(config?.phone || '');
   const [email, setEmail] = useState(config?.email || '');
   const [heroImageUrl, setHeroImageUrl] = useState(config?.heroImageUrl || '');
+  // Mesma imagem padrão do Hero.tsx — usada quando não há imagem personalizada salva.
+  const DEFAULT_HERO_IMAGE = 'https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&w=1920&q=80';
   const [logoUploadProgress, setLogoUploadProgress] = useState<number | null>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
@@ -866,11 +868,15 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Imagem de fundo da landing page</label>
               <p className="text-[11px] text-gray-400 px-1 -mt-1">Esta imagem é usada como plano de fundo (hero) da página pública da paróquia.</p>
               <div className="flex items-center gap-4">
-                {heroImageUrl && (
-                  <div className="w-16 h-16 rounded-xl border border-gray-100 overflow-hidden shrink-0">
-                    <img src={heroImageUrl} alt="Imagem de fundo da landing page" className="w-full h-full object-cover" />
-                  </div>
-                )}
+                <a
+                  href={heroImageUrl || DEFAULT_HERO_IMAGE}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir a imagem atual em nova aba (para backup)"
+                  className="w-24 h-16 rounded-xl border border-gray-100 overflow-hidden shrink-0 block"
+                >
+                  <img src={heroImageUrl || DEFAULT_HERO_IMAGE} alt="Imagem de fundo atual da landing" className="w-full h-full object-cover" />
+                </a>
                 <div className="flex-1">
                   <input
                     type="file"
@@ -887,6 +893,17 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
                   {logoUploadProgress !== null && (
                     <p className="text-[10px] text-gray-400 mt-1">Carregando: {logoUploadProgress}%</p>
                   )}
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {heroImageUrl ? 'Imagem personalizada atual.' : 'Usando a imagem padrão.'}{' '}
+                    <a
+                      href={heroImageUrl || DEFAULT_HERO_IMAGE}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#5A5A40] font-bold underline"
+                    >
+                      Abrir / baixar imagem atual
+                    </a>
+                  </p>
                 </div>
               </div>
             </div>
