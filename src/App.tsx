@@ -2206,16 +2206,24 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
     return days;
   };
 
+  // Hora efetiva para ordenação (recorrente → recurrenceTime; pontual → startTime
+  // ou a hora do campo date). Sem hora vai para o fim ('99:99').
+  const eventSortTime = (e: ChurchEvent) => e.isRecurring
+    ? (e.recurrenceTime || e.startTime || '99:99')
+    : (e.startTime || format(new Date(e.date), 'HH:mm') || '99:99');
+
   const getDayEvents = (d: Date) => {
     const dStr = format(d, 'yyyy-MM-dd');
-    return events.filter(e => {
-      if (e.isRecurring) {
-        const matchesDay = e.recurrenceDay === d.getDay();
-        const isExcluded = e.excludedDates?.includes(dStr);
-        return matchesDay && !isExcluded;
-      }
-      return format(new Date(e.date), 'yyyy-MM-dd') === dStr;
-    });
+    return events
+      .filter(e => {
+        if (e.isRecurring) {
+          const matchesDay = e.recurrenceDay === d.getDay();
+          const isExcluded = e.excludedDates?.includes(dStr);
+          return matchesDay && !isExcluded;
+        }
+        return format(new Date(e.date), 'yyyy-MM-dd') === dStr;
+      })
+      .sort((a, b) => eventSortTime(a).localeCompare(eventSortTime(b)));
   };
 
   const weekDayNames = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];

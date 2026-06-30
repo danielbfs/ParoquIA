@@ -31,24 +31,31 @@ export default function EventCalendar({ events }: EventCalendarProps) {
   const [selectedEvent, setSelectedEvent] = useState<ChurchEvent | null>(null);
 
   // Verificar quais eventos ocorrem em um determinado dia (reutiliza a lógica de recorrência)
+  // Hora efetiva para ordenação (sem hora vai para o fim).
+  const sortTime = (e: ChurchEvent) => e.isRecurring
+    ? (e.recurrenceTime || e.startTime || '99:99')
+    : (e.startTime || format(new Date(e.date), 'HH:mm') || '99:99');
+
   const getEventsForDate = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
     const dayOfWeek = date.getDay(); // 0 = Domingo, 1 = Segunda...
 
-    return events.filter(event => {
-      if (event.isRecurring) {
-        const matchesDay = event.recurrenceDay === dayOfWeek;
-        const isExcluded = event.excludedDates?.includes(dateStr);
-        return matchesDay && !isExcluded;
-      } else {
-        const eventDate = new Date(event.date);
-        return (
-          eventDate.getDate() === date.getDate() &&
-          eventDate.getMonth() === date.getMonth() &&
-          eventDate.getFullYear() === date.getFullYear()
-        );
-      }
-    });
+    return events
+      .filter(event => {
+        if (event.isRecurring) {
+          const matchesDay = event.recurrenceDay === dayOfWeek;
+          const isExcluded = event.excludedDates?.includes(dateStr);
+          return matchesDay && !isExcluded;
+        } else {
+          const eventDate = new Date(event.date);
+          return (
+            eventDate.getDate() === date.getDate() &&
+            eventDate.getMonth() === date.getMonth() &&
+            eventDate.getFullYear() === date.getFullYear()
+          );
+        }
+      })
+      .sort((a, b) => sortTime(a).localeCompare(sortTime(b)));
   };
 
   // ===== Navegação coerente com a visão =====
