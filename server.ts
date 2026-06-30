@@ -19,6 +19,11 @@ const safeKeyEquals = (provided: unknown, expected: string): boolean => {
   return crypto.timingSafeEqual(a, b);
 };
 
+// Config de IA lida de env (spec §4.3). A chave NUNCA vai para o bundle do cliente:
+// as chamadas Gemini do front passam pelo endpoint /api/ai/chat deste servidor.
+const AI_MODEL = process.env.AI_MODEL || "gemini-3-flash-preview";
+const AI_API_KEY = process.env.AI_API_KEY || process.env.GEMINI_API_KEY;
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -99,9 +104,9 @@ async function startServer() {
         const modalities = config?.paymentModalities || ['Dízimo', 'Oferta'];
         
         // 3. AI Analysis & Response Generation
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+        const ai = new GoogleGenAI({ apiKey: AI_API_KEY });
         const model = ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: AI_MODEL,
           contents: `
             Você é o ParoquIA. 
             Instrução: ${config?.aiPrompt || 'Acolha o fiel e organize a informação.'}
@@ -117,7 +122,7 @@ async function startServer() {
         const [aiResponse, analysisResponse] = await Promise.all([
           model,
           ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: AI_MODEL,
             contents: `Analise a mensagem: "${textContent}". Extraia se é um pagamento, valor e modalidade (se informada).`,
             config: {
               responseMimeType: "application/json",
@@ -179,6 +184,88 @@ async function startServer() {
     } catch (error) {
       console.error("Webhook Error:", error);
       res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+
+  // POST /api/ai/chat: proxy server-side das chamadas Gemini do painel (Teste de Chat).
+  // A chave da IA fica só no servidor (não vai para o bundle do cliente). Exige um
+  // ID token Firebase válido para evitar abuso anônimo da API paga.
+  app.post("/api/ai/chat", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (!idToken) return res.status(401).json({ error: "Unauthorized" });
+      const { adminAuth } = await import("./src/lib/firebase-server");
+      try {
+        await adminAuth.verifyIdToken(idToken);
+      } catch {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { message, history = [], context = "", customPrompt } = req.body || {};
+      if (typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ error: "O campo 'message' é obrigatório." });
+      }
+      if (!AI_API_KEY) {
+        return res.status(503).json({ error: "IA não configurada no servidor." });
+      }
+
+      const { GoogleGenAI, Type } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey: AI_API_KEY });
+
+      const histText = (Array.isArray(history) ? history : [])
+        .map((h: any) => `${h.role === "ai" ? "IA" : "Usuário"}: ${h.content}`)
+        .join("\n");
+
+      const prompt = `
+        SISTEMA (Instrução):
+        ${customPrompt || "Você é o ParoquIA, um assistente pastoral inteligente. Seja acolhedor, use linguagem cristã moderada e ajude com informações da paróquia."}
+
+        CONTEXTO DO SISTEMA (Dados Atuais):
+        ${context}
+
+        INSTRUÇÃO ADICIONAL:
+        Se o usuário enviou algo que parece um comprovante ou fala sobre pagamento e você não sabe o objetivo (Dízimo, Oferta, Festa, etc), você DEVE perguntar educadamente qual a finalidade para podermos registrar corretamente.
+
+        HISTÓRICO DA CONVERSA:
+        ${histText}
+
+        NOVA MENSAGEM DO USUÁRIO:
+        ${message}
+
+        IA:
+      `;
+
+      const response = await ai.models.generateContent({ model: AI_MODEL, contents: prompt });
+      const responseText = response.text || "Paz de Cristo! Como posso te ajudar?";
+
+      const analysisResponse = await ai.models.generateContent({
+        model: AI_MODEL,
+        contents: `Analise brevemente esta mensagem de usuário: "${message}". Extraia categoria e sentimento.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: { category: { type: Type.STRING }, sentiment: { type: Type.STRING } },
+            required: ["category", "sentiment"],
+          },
+        },
+      });
+
+      let analysis;
+      try {
+        analysis = JSON.parse(analysisResponse.text || '{"category":"Outros","sentiment":"Neutro"}');
+      } catch {
+        analysis = { category: "Outros", sentiment: "Neutro" };
+      }
+
+      res.status(200).json({ text: responseText, analysis });
+    } catch (error) {
+      console.error("Error in POST /api/ai/chat:", error);
+      res.status(500).json({
+        text: "Paz de Cristo! No momento estou passando por uma manutenção técnica, mas em breve poderei te ajudar melhor.",
+        analysis: { category: "Erro", sentiment: "Neutro" },
+      });
     }
   });
 
