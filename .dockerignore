@@ -1,0 +1,15 @@
+# Reduz a imagem e evita baked-in de segredos/artefatos.
+# ATENÇÃO: NÃO ignorar `.env` — o `vite build` (no Dockerfile) lê as VITE_* dele
+# em tempo de build. A retirada do .env da imagem exige passar as VITE_* como
+# build args (refactor futuro do Dockerfile).
+node_modules
+.git
+dist
+build
+coverage
+*.log
+build.log
+*.pem
+service-account.json
+.DS_Store
+docs

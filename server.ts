@@ -1,8 +1,23 @@
 import express from "express";
 import path from "path";
 import cors from "cors";
+import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { initEvolutionApi } from "./src/services/evolutionApiServer";
+
+// Segredo interno compartilhado para chamadas server->server (mesma chave usada pela
+// Evolution API interna). EVOLUTION_INTERNAL_KEY (novo) com fallback para VITE_EVOLUTION_API_KEY.
+const getInternalKey = (): string | undefined =>
+  process.env.EVOLUTION_INTERNAL_KEY || process.env.VITE_EVOLUTION_API_KEY;
+
+// Comparação em tempo constante que tolera tamanhos diferentes sem lançar exceção.
+const safeKeyEquals = (provided: unknown, expected: string): boolean => {
+  if (typeof provided !== "string" || provided.length === 0) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+};
 
 async function startServer() {
   const app = express();
@@ -17,6 +32,17 @@ async function startServer() {
   // Endpoint do Webhook para Evolution API (receberá do baileys interno)
   app.post("/api/webhook/whatsapp", async (req, res) => {
     try {
+      // Verificação do segredo compartilhado: o produtor é o próprio processo Baileys
+      // (evolutionApiServer.ts), que envia o header x-webhook-secret com a mesma chave do env.
+      const expectedSecret = getInternalKey();
+      if (!expectedSecret) {
+        console.warn("[Webhook] Nenhuma chave configurada (EVOLUTION_INTERNAL_KEY/VITE_EVOLUTION_API_KEY). Negando webhook.");
+        return res.status(401).json({ error: "Unauthorized: webhook secret not configured" });
+      }
+      if (!safeKeyEquals(req.headers["x-webhook-secret"], expectedSecret)) {
+        return res.status(401).json({ error: "Unauthorized: invalid webhook secret" });
+      }
+
       const data = req.body;
       const { adminDb } = await import("./src/lib/firebase-server");
       const { GoogleGenAI, Type } = await import("@google/genai");
@@ -45,7 +71,7 @@ async function startServer() {
           try {
             const dlResponse = await fetch(`http://localhost:3000/api/evolution/message/downloadMedia/${instanceName}`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'apikey': 'INTERNAL' },
+              headers: { 'Content-Type': 'application/json', 'apikey': getInternalKey() || '' },
               body: JSON.stringify({ message })
             });
             const dlData = await dlResponse.json();
@@ -138,9 +164,9 @@ async function startServer() {
         // 6. Send Response via WhatsApp (Self-reply)
         await fetch(`http://localhost:3000/api/evolution/message/sendText/${instanceName}`, {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
-            'apikey': 'INTERNAL'
+            'apikey': getInternalKey() || ''
           },
           body: JSON.stringify({
             number: sender,
@@ -264,6 +290,7 @@ async function startServer() {
   });
 
   // Serve media files
+  // TODO(segurança): /media público expõe comprovantes — migrar para Storage com URL assinada
   app.use('/media', express.static(path.join(process.cwd(), 'dist', 'media')));
 
   // Vite middleware para desenvolvimento

@@ -10,8 +10,24 @@ import path from 'path';
 import QRCode from 'qrcode';
 import fs from 'fs';
 import pino from 'pino';
+import crypto from 'crypto';
 
 const logger = pino({ level: 'silent' });
+
+// Resolve o segredo interno usado para autenticar as chamadas server->server
+// (self-reply do webhook, download de mídia, webhook do Baileys).
+// Usa EVOLUTION_INTERNAL_KEY (novo) com fallback para VITE_EVOLUTION_API_KEY (já existente).
+const getInternalKey = (): string | undefined =>
+  process.env.EVOLUTION_INTERNAL_KEY || process.env.VITE_EVOLUTION_API_KEY;
+
+// Comparação em tempo constante que tolera tamanhos diferentes sem lançar exceção.
+const safeKeyEquals = (provided: unknown, expected: string): boolean => {
+  if (typeof provided !== 'string' || provided.length === 0) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+};
 
 interface Instance {
   name: string;
@@ -39,12 +55,17 @@ export const initEvolutionApi = (app: any) => {
   // Middleware for API key
   app.use((req: any, res: any, next: any) => {
     // Only protect paths starting with /api/evolution
-    if (req.path.startsWith('/api/evolution/instance') || 
+    if (req.path.startsWith('/api/evolution/instance') ||
         req.path.startsWith('/api/evolution/webhook') ||
         req.path.startsWith('/api/evolution/message')) {
+      const expectedKey = getInternalKey();
+      // Fail-safe: sem segredo configurado, NÃO liberar geral — negar as rotas protegidas.
+      if (!expectedKey) {
+        console.warn('[Evolution] Nenhuma chave configurada (EVOLUTION_INTERNAL_KEY/VITE_EVOLUTION_API_KEY). Negando rotas protegidas.');
+        return res.status(401).json({ error: 'Unauthorized: API Key not configured' });
+      }
       const apiKey = req.headers.apikey;
-      if (apiKey === 'INTERNAL') return next();
-      if (!apiKey || apiKey.length < 5) {
+      if (!safeKeyEquals(apiKey, expectedKey)) {
         return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
       }
     }
@@ -96,9 +117,15 @@ export const initEvolutionApi = (app: any) => {
     sock.ev.on('messages.upsert', async (m) => {
       if (instance.webhook && m.type === 'notify') {
         try {
+          // Inclui o segredo compartilhado para que o consumidor (server.ts) possa
+          // validar que o POST veio deste processo Baileys, e não de um terceiro.
+          const webhookSecret = getInternalKey();
           await fetch(instance.webhook, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              ...(webhookSecret ? { 'x-webhook-secret': webhookSecret } : {})
+            },
             body: JSON.stringify({
               event: 'MESSAGES_UPSERT',
               instance: name,

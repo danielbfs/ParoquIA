@@ -37,7 +37,8 @@ import { cn } from './lib/utils';
 import { firestoreService } from './services/firestoreService';
 import { generateChatResponse } from './services/geminiService';
 import { evolutionService } from './services/evolutionService';
-import { auth, signInWithGoogle } from './lib/firebase';
+import { auth, signInWithGoogle, storage } from './lib/firebase';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Message, Transaction, Parishioner, Event as ChurchEvent, UserProfile, SystemConfig, ConversationMeta, Critique, AuthorizedEmail } from './types';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
@@ -51,7 +52,7 @@ import {
   LineChart, 
   Line
 } from 'recharts';
-import { format } from 'date-fns';
+import { format, addMonths, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import ReactMarkdown from 'react-markdown';
 import { orderBy } from 'firebase/firestore';
@@ -208,8 +209,8 @@ function PastoralPanel() {
         }
         
         const mockEvents = [
-          { title: 'Festa da Padroeira', date: new Date(Date.now() + 86400000 * 5).toISOString(), location: 'Salão Paroquial', description: 'Grande celebração com quermesse e procissão.' },
-          { title: 'Missa das Crianças', date: new Date(Date.now() + 86400000 * 2).toISOString(), location: 'Igreja Matriz', description: 'Celebração especial para as famílias.' }
+          { title: 'Festa da Padroeira', date: format(new Date(Date.now() + 86400000 * 5), "yyyy-MM-dd'T'HH:mm:ss"), location: 'Salão Paroquial', description: 'Grande celebração com quermesse e procissão.' },
+          { title: 'Missa das Crianças', date: format(new Date(Date.now() + 86400000 * 2), "yyyy-MM-dd'T'HH:mm:ss"), location: 'Igreja Matriz', description: 'Celebração especial para as famílias.' }
         ];
         for (const ev of mockEvents) {
           await firestoreService.addDocument('events', ev);
@@ -494,7 +495,60 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
   const [activeAdminTab, setActiveAdminTab] = useState<'general' | 'evolution' | 'critiques' | 'users'>('general');
   const [prompt, setPrompt] = useState(config?.aiPrompt || '');
   const [parishName, setParishName] = useState(config?.parishName || '');
-  
+  const [address, setAddress] = useState(config?.address || '');
+  const [phone, setPhone] = useState(config?.phone || '');
+  const [email, setEmail] = useState(config?.email || '');
+  const [heroImageUrl, setHeroImageUrl] = useState(config?.heroImageUrl || '');
+  const [logoUploadProgress, setLogoUploadProgress] = useState<number | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+  const handleUploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      alert('Formato de imagem inválido. Use PNG, JPEG, WEBP ou GIF.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      alert('Imagem muito grande. O tamanho máximo permitido é 5 MB.');
+      e.target.value = '';
+      return;
+    }
+    setIsUploadingLogo(true);
+    setLogoUploadProgress(0);
+    try {
+      const storageRef = ref(storage, `config/logo_${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setLogoUploadProgress(Math.round(progress));
+        },
+        (error) => {
+          console.error(error);
+          alert('Erro no upload da logo: ' + error.message);
+          setIsUploadingLogo(false);
+          setLogoUploadProgress(null);
+        },
+        async () => {
+          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          setHeroImageUrl(downloadUrl);
+          setIsUploadingLogo(false);
+          setLogoUploadProgress(null);
+        }
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao iniciar upload da logo: ' + err.message);
+      setIsUploadingLogo(false);
+      setLogoUploadProgress(null);
+    }
+  };
+
   // Modalities management
   const [modalities, setModalities] = useState<string[]>(config?.paymentModalities || []);
   const [newModality, setNewModality] = useState('');
@@ -531,6 +585,10 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
       if (config.evolutionApiUrl) setApiUrl(config.evolutionApiUrl);
       if (config.evolutionApiKey) setApiKey(config.evolutionApiKey);
       if (config.evolutionInstanceName) setInstanceName(config.evolutionInstanceName);
+      setAddress(config.address || '');
+      setPhone(config.phone || '');
+      setEmail(config.email || '');
+      setHeroImageUrl(config.heroImageUrl || '');
     }
   }, [config]);
 
@@ -675,6 +733,10 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
       evolutionApiUrl: apiUrl,
       evolutionApiKey: apiKey,
       evolutionInstanceName: instanceName,
+      address,
+      phone,
+      email,
+      heroImageUrl,
       updatedAt: new Date().toISOString()
     };
     await firestoreService.updateDocument('config', config.id, updatedData);
@@ -761,13 +823,75 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
               <p className="text-[10px] text-gray-400 mt-2 italic">* Este prompt guia o comportamento de todas as respostas automáticas da IA.</p>
             </div>
 
-            <button 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Telefone de Contato</label>
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                  placeholder="(00) 00000-0000"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">E-mail Exibido</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                  placeholder="contato@paroquia.com"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Endereço da Paróquia</label>
+              <input
+                type="text"
+                value={address}
+                onChange={e => setAddress(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                placeholder="Rua da Igreja, 123 - Centro"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Logo / Imagem de Capa (Paróquia)</label>
+              <div className="flex items-center gap-4">
+                {heroImageUrl && (
+                  <div className="w-16 h-16 rounded-xl border border-gray-100 overflow-hidden shrink-0">
+                    <img src={heroImageUrl} alt="Logo da paróquia" className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleUploadLogo}
+                    disabled={isUploadingLogo}
+                    className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#5A5A40]/10 file:text-[#5A5A40] hover:file:bg-[#5A5A40]/20"
+                  />
+                  {isUploadingLogo && (
+                    <div className="w-full bg-gray-100 h-2 rounded-full mt-2 overflow-hidden">
+                      <div className="bg-[#5A5A40] h-full transition-all duration-300" style={{ width: `${logoUploadProgress}%` }}></div>
+                    </div>
+                  )}
+                  {logoUploadProgress !== null && (
+                    <p className="text-[10px] text-gray-400 mt-1">Carregando: {logoUploadProgress}%</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <button
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={isSaving || isUploadingLogo}
               className="w-full bg-[#5A5A40] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#4A4A35] transition-all shadow-lg shadow-[#5A5A40]/10 disabled:opacity-50"
             >
               {isSaving ? <Clock className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              {isSaving ? 'Salvando Configurações...' : 'Atualizar IA'}
+              {isSaving ? 'Salvando Configurações...' : 'Atualizar IA e Dados'}
             </button>
           </div>
 
@@ -1902,9 +2026,15 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [time, setTime] = useState('08:00');
   const [location, setLocation] = useState('');
+  const [description, setdescription] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceDay, setRecurrenceDay] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [startTime, setStartTime] = useState('08:00');
+  const [endTime, setEndTime] = useState('09:00');
+  const [imageUrl, setImageUrl] = useState('');
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     if (editingEvent) {
@@ -1912,22 +2042,92 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       setDate(format(new Date(editingEvent.date), 'yyyy-MM-dd'));
       setTime(format(new Date(editingEvent.date), 'HH:mm'));
       setLocation(editingEvent.location);
+      setdescription(editingEvent.description || '');
       setIsRecurring(!!editingEvent.isRecurring);
       setRecurrenceDay(editingEvent.recurrenceDay || 0);
+      setStartTime(editingEvent.startTime || '08:00');
+      setEndTime(editingEvent.endTime || '09:00');
+      setImageUrl(editingEvent.imageUrl || '');
       setShowAddModal(true);
     } else {
       setTitle('');
       setDate(format(new Date(), 'yyyy-MM-dd'));
       setTime('08:00');
       setLocation('');
+      setdescription('');
       setIsRecurring(false);
       setRecurrenceDay(0);
+      setStartTime('08:00');
+      setEndTime('09:00');
+      setImageUrl('');
     }
   }, [editingEvent]);
 
+  const handleUploadEventImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      alert('Formato de imagem inválido. Use PNG, JPEG, WEBP ou GIF.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      alert('Imagem muito grande. O tamanho máximo permitido é 5 MB.');
+      e.target.value = '';
+      return;
+    }
+    setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      const storageRef = ref(storage, `events/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(Math.round(progress));
+        },
+        (error) => {
+          console.error(error);
+          alert('Erro no upload da imagem do evento: ' + error.message);
+          setIsUploading(false);
+          setUploadProgress(null);
+        },
+        async () => {
+          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          setImageUrl(downloadUrl);
+          setIsUploading(false);
+          setUploadProgress(null);
+        }
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao iniciar upload da imagem do evento: ' + err.message);
+      setIsUploading(false);
+      setUploadProgress(null);
+    }
+  };
+
   const handleSaveEvent = async (mode: 'all' | 'single' = 'all') => {
     if (!title) return;
-    
+
+    // Validate time fields (HH:mm)
+    const timeRegex = /^([01]?\d|2[0-3]):[0-5]\d$/;
+    if (!timeRegex.test(startTime)) {
+      alert('Horário de início inválido. Use o formato HH:mm.');
+      return;
+    }
+    if (endTime && !timeRegex.test(endTime)) {
+      alert('Horário de término inválido. Use o formato HH:mm.');
+      return;
+    }
+    if (startTime && endTime && endTime <= startTime) {
+      alert('O horário de término deve ser maior que o horário de início.');
+      return;
+    }
+
     // If editing a recurring event and choice not yet made
     if (editingEvent?.isRecurring && !showRecurrenceChoice && mode === 'all') {
       setShowRecurrenceChoice(true);
@@ -1939,10 +2139,13 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
       title,
       date: `${date}T${time}:00`,
       location,
-      description: '',
+      description,
       isRecurring: mode === 'all' ? isRecurring : false,
       recurrenceDay: (mode === 'all' && isRecurring) ? recurrenceDay : undefined,
-      recurrenceTime: (mode === 'all' && isRecurring) ? time : undefined
+      recurrenceTime: (mode === 'all' && isRecurring) ? time : undefined,
+      startTime,
+      endTime,
+      imageUrl
     };
 
     if (editingEvent?.id) {
@@ -2034,13 +2237,13 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
 
         <div className="flex items-center gap-4">
            <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl">
-             <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))} className="p-2 hover:bg-white rounded-lg transition-colors">
+             <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-white rounded-lg transition-colors">
                <ChevronLeft className="w-4 h-4 text-[#5A5A40]" />
              </button>
              <span className="px-4 font-bold text-sm min-w-[140px] text-center">
                {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
              </span>
-             <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))} className="p-2 hover:bg-white rounded-lg transition-colors">
+             <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-2 hover:bg-white rounded-lg transition-colors">
                <ChevronRight className="w-4 h-4 text-[#5A5A40]" />
              </button>
            </div>
@@ -2093,7 +2296,9 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                           )}
                         >
                           {ev.isRecurring && <Clock className="w-2 h-2 inline mr-1" />}
-                          {format(new Date(ev.date), 'HH:mm')} {ev.title}
+                          {ev.isRecurring
+                            ? (ev.recurrenceTime || ev.startTime)
+                            : (ev.startTime || format(new Date(ev.date), 'HH:mm'))} {ev.title}
                         </button>
                       ))}
                     </div>
@@ -2187,36 +2392,89 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Data / Início</label>
-                  <input 
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Data</label>
+                  <input
                     type="date"
                     value={date}
                     onChange={e => setDate(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none"
+                    className="w-full px-2 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none text-xs"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Horário</label>
-                  <input 
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Início</label>
+                  <input
                     type="time"
-                    value={time}
-                    onChange={e => setTime(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none"
+                    value={startTime}
+                    onChange={e => {
+                      setStartTime(e.target.value);
+                      setTime(e.target.value);
+                    }}
+                    placeholder="08:00"
+                    className="w-full px-2 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none text-xs"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Fim</label>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={e => setEndTime(e.target.value)}
+                    placeholder="09:00"
+                    className="w-full px-2 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none text-xs"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Local</label>
-                <input 
+                <input
                   type="text"
                   value={location}
                   onChange={e => setLocation(e.target.value)}
                   placeholder="Ex: Matriz, Capela, Salão Paroquial..."
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Descrição</label>
+                <textarea
+                  value={description}
+                  onChange={e => setdescription(e.target.value)}
+                  rows={3}
+                  placeholder="Detalhes do evento, programação, observações..."
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10 resize-none"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Imagem do Evento</label>
+                <div className="flex items-center gap-4">
+                  {imageUrl && (
+                    <div className="w-16 h-16 rounded-xl border border-gray-100 overflow-hidden shrink-0">
+                      <img src={imageUrl} alt="Imagem do evento" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleUploadEventImage}
+                      disabled={isUploading}
+                      className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#5A5A40]/10 file:text-[#5A5A40] hover:file:bg-[#5A5A40]/20"
+                    />
+                    {isUploading && (
+                      <div className="w-full bg-gray-100 h-2 rounded-full mt-2 overflow-hidden">
+                        <div className="bg-[#5A5A40] h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                      </div>
+                    )}
+                    {uploadProgress !== null && (
+                      <p className="text-[10px] text-gray-400 mt-1">Carregando: {uploadProgress}%</p>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="flex items-center gap-3 p-4 bg-purple-50 rounded-2xl border border-purple-100">
@@ -2266,10 +2524,10 @@ function EventsView({ events }: { events: ChurchEvent[] }) {
                     Excluir
                   </button>
                 )}
-                <button 
+                <button
                   onClick={() => handleSaveEvent()}
-                  disabled={isSaving}
-                  className="flex-[2] bg-[#5A5A40] text-white py-4 rounded-xl font-bold hover:bg-[#4A4A35] transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#5A5A40]/20"
+                  disabled={isSaving || isUploading}
+                  className="flex-[2] bg-[#5A5A40] text-white py-4 rounded-xl font-bold hover:bg-[#4A4A35] transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#5A5A40]/20 disabled:opacity-50"
                 >
                   {isSaving ? <Clock className="w-4 h-4 animate-spin" /> : editingEvent ? <Smartphone className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                   {isSaving ? 'Salvando...' : editingEvent ? 'Salvar Alterações' : 'Confirmar Agendamento'}
