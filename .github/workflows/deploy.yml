@@ -1,0 +1,83 @@
+name: Deploy
+
+# Publica em produção (AWS Lightsail). A imagem é buildada aqui na CI e enviada
+# ao GHCR; o servidor apenas baixa e reinicia — tirando a carga de build do host
+# de 1 GB. O job `deploy` fica atrás do Environment `production` (aprovação manual).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/paroquia
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Config do Firebase do cliente (embutida no bundle em build time).
+      # Fonte real de produção; sem ela o app cliente sobe sem Firebase.
+      - name: Grava firebase-applet-config.json
+        run: printf '%s' "$FIREBASE_APPLET_CONFIG" > firebase-applet-config.json
+        env:
+          FIREBASE_APPLET_CONFIG: ${{ secrets.FIREBASE_APPLET_CONFIG }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login no GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push da imagem
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    environment: production   # <- porta de aprovação manual
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            cd ~/app
+            git pull --ff-only
+            docker compose pull app
+            docker compose up -d
+            docker exec paroquia-ai node /app/scripts/publish-firestore-rules.mjs
+            docker compose ps
+
+      - name: Health check
+        run: |
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" https://paroquia.sigame.tec.br/api/public/landing || true)
+            echo "tentativa $i -> HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 10
+          done
+          echo "Health check falhou (endpoint não retornou 200)."
+          exit 1

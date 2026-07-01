@@ -28,6 +28,9 @@ services:
       - internal
 
   app:
+    # Imagem publicada pela CI no GHCR (deploy baixa e reinicia, sem buildar no host).
+    # `build: .` fica como fallback para build manual: docker compose up -d --build.
+    image: ghcr.io/danielbfs/paroquia:latest
     build: .
     container_name: paroquia-ai
     restart: always
