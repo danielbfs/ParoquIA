@@ -1,11 +1,43 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Phone, Mail, Send, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { MapPin, Phone, Mail, Send, CheckCircle2, AlertCircle, Clock, Navigation } from 'lucide-react';
 import { SystemConfig } from '../../types'; // Note: path will be adjusted when copying to the final src directory
 
 interface ContactSectionProps {
   config: SystemConfig;
 }
+
+// O admin pode colar o código <iframe ...> inteiro (Compartilhar → Incorporar um mapa)
+// ou apenas a URL. Extraímos o src do snippet quando presente.
+const extractSrc = (raw?: string): string | undefined => {
+  if (!raw) return undefined;
+  const m = raw.match(/src="([^"]+)"/i);
+  return (m ? m[1] : raw).trim();
+};
+
+// Um link só renderiza em <iframe> se for do endpoint de embed do Google Maps
+// (/maps/embed?pb=...) ou trouxer output=embed. Links de compartilhamento
+// (maps.app.goo.gl, /maps/place/...) são bloqueados por X-Frame-Options.
+const isEmbeddable = (url?: string) =>
+  !!url && (url.includes('/maps/embed') || url.includes('output=embed'));
+
+// Fonte do iframe: prioriza um embed explícito; senão deriva do endereço.
+const getMapSrc = (mapEmbedUrl?: string, address?: string): string | null => {
+  const src = extractSrc(mapEmbedUrl);
+  if (isEmbeddable(src)) return src as string;
+  if (address) return `https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
+  return null;
+};
+
+// Destino do botão "Como chegar": o link de compartilhamento, se houver; senão
+// busca pelo endereço; em último caso, o próprio embed (ao menos abre o mapa).
+const getDirectionsHref = (mapEmbedUrl?: string, address?: string): string | null => {
+  const src = extractSrc(mapEmbedUrl);
+  if (src && !isEmbeddable(src)) return src;
+  if (address) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  if (src) return src;
+  return null;
+};
 
 export default function ContactSection({ config }: ContactSectionProps) {
   const [formData, setFormData] = useState({
@@ -17,6 +49,9 @@ export default function ContactSection({ config }: ContactSectionProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+
+  const mapSrc = getMapSrc(config.mapEmbedUrl, config.address);
+  const directionsHref = getDirectionsHref(config.mapEmbedUrl, config.address);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -231,6 +266,37 @@ export default function ContactSection({ config }: ContactSectionProps) {
             </form>
           </motion.div>
         </div>
+
+        {/* Mapa de localização */}
+        {mapSrc && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="relative mt-16 rounded-[2.5rem] overflow-hidden border border-gray-100 shadow-lg"
+          >
+            <iframe
+              title="Localização da paróquia"
+              src={mapSrc}
+              className="w-full h-72 md:h-96 grayscale-[0.15]"
+              style={{ border: 0 }}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              allowFullScreen
+            />
+            {directionsHref && (
+              <a
+                href={directionsHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="absolute bottom-5 right-5 bg-white text-[#5A5A40] px-5 py-3 rounded-2xl font-bold text-sm shadow-xl hover:bg-[#F3F4F1] transition-all flex items-center gap-2 active:scale-[0.98]"
+              >
+                <Navigation className="w-4 h-4" />
+                Como chegar
+              </a>
+            )}
+          </motion.div>
+        )}
       </div>
     </section>
   );

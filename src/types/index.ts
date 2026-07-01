@@ -107,6 +107,17 @@ export interface Work {
   createdAt?: string;
 }
 
+export interface Community {
+  id?: string;
+  name: string;            // ex.: "Comunidade São José"
+  address?: string;        // endereço da comunidade
+  massSchedule?: string;   // horários de missa (texto livre, ex.: "Dom 8h e 19h")
+  imageUrl?: string;       // foto da capela/comunidade
+  isActive?: boolean;      // exibir na landing (padrão: exibir)
+  order?: number;          // ordenação manual na landing (menor primeiro)
+  createdAt?: string;
+}
+
 export interface UserProfile {
   id?: string;
   email: string;
@@ -140,5 +151,12 @@ export interface SystemConfig {
   contactEmailTo?: string; // destino do formulário de contato
   pixKey?: string;         // chave PIX da paróquia (exibida nas doações de eventos)
   whatsappNumber?: string; // WhatsApp da paróquia (envio de comprovante)
+  // Palavra do Pároco (exibida na landing)
+  priestName?: string;     // nome do pároco
+  priestRole?: string;     // cargo (ex.: "Pároco")
+  priestPhotoUrl?: string; // foto do pároco
+  priestMessage?: string;  // mensagem/palavra de boas-vindas
+  // Localização
+  mapEmbedUrl?: string;    // link do Google Maps (embed ou compartilhamento)
 }
 

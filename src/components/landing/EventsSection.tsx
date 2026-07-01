@@ -52,9 +52,9 @@ export default function EventsSection({ events, pixKey, whatsappNumber }: Events
   const hasAnyEvent = specificEvents.length > 0 || recurringEvents.length > 0;
 
   return (
-    <section id="eventos" className="py-24 bg-[#FDFDFB]">
+    <section id="eventos" className="py-20 bg-[#FDFDFB]">
       <div className="max-w-7xl mx-auto px-6">
-        <div className="text-center mb-16">
+        <div className="text-center mb-12">
           <motion.p
             initial={{ opacity: 0, y: 10 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -111,7 +111,7 @@ export default function EventsSection({ events, pixKey, whatsappNumber }: Events
                           alt={event.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
-                        <div className="absolute top-4 right-4 bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full shadow-md">
+                        <div className="absolute top-4 right-4 bg-[#B8763E] text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full shadow-md">
                           Evento Especial
                         </div>
                         {event.allowDonation && (
@@ -172,10 +172,10 @@ export default function EventsSection({ events, pixKey, whatsappNumber }: Events
 
             {/* LISTA MENOR — Celebrações semanais (recorrentes) */}
             {recurringEvents.length > 0 && (
-              <div className="mt-20 max-w-3xl mx-auto">
+              <div className="mt-16 max-w-3xl mx-auto">
                 <div className="flex items-center justify-center gap-2 mb-8">
-                  <Repeat className="w-4 h-4 text-purple-600" />
-                  <h3 className="text-center text-sm font-black uppercase tracking-[0.2em] text-purple-700">
+                  <Repeat className="w-4 h-4 text-[#5A5A40]" />
+                  <h3 className="text-center text-sm font-black uppercase tracking-[0.2em] text-[#5A5A40]">
                     Celebrações Semanais
                   </h3>
                 </div>
@@ -192,31 +192,30 @@ export default function EventsSection({ events, pixKey, whatsappNumber }: Events
                         whileInView={{ opacity: 1, x: 0 }}
                         viewport={{ once: true }}
                         transition={{ duration: 0.3, delay: index * 0.05 }}
-                        className="w-full text-left flex items-center gap-4 p-5 hover:bg-purple-50/40 transition-colors focus:outline-none focus:bg-purple-50/60 group"
+                        className="w-full text-left flex items-center gap-4 p-5 hover:bg-[#5A5A40]/[0.04] transition-colors focus:outline-none focus:bg-[#5A5A40]/[0.06] group"
                       >
-                        {/* Indicador de dia */}
+                        {/* Trilho + indicador de dia/hora */}
+                        <div className="shrink-0 w-1 self-stretch rounded-full bg-[#5A5A40]/20 group-hover:bg-[#5A5A40] transition-colors" />
                         <div className="shrink-0 w-16 text-center">
-                          <span className="block text-[10px] font-bold uppercase tracking-wider text-purple-600">
+                          <span className="block text-[10px] font-black uppercase tracking-wider text-[#5A5A40]">
                             {getWeekDayName(event.recurrenceDay ?? 0).slice(0, 3)}
                           </span>
                           {time && (
-                            <span className="block text-sm font-bold text-gray-900 mt-0.5">{time}</span>
+                            <span className="block text-lg font-serif font-bold text-gray-900 mt-0.5 tabular-nums">{time}</span>
                           )}
                         </div>
 
-                        <div className="w-px self-stretch bg-purple-100" />
-
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-base font-bold text-gray-900 truncate group-hover:text-purple-700 transition-colors">
+                          <h4 className="text-base font-bold text-gray-900 truncate group-hover:text-[#5A5A40] transition-colors">
                             {event.title}
                           </h4>
                           <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
-                            <MapPin className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                            <MapPin className="w-3.5 h-3.5 text-[#5A5A40]/60 shrink-0" />
                             <span className="truncate">{event.location}</span>
                           </div>
                         </div>
 
-                        <span className="shrink-0 hidden sm:inline-block bg-purple-100 text-purple-700 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+                        <span className="shrink-0 hidden sm:inline-block bg-[#5A5A40]/10 text-[#5A5A40] text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
                           Recorrente
                         </span>
                       </motion.button>

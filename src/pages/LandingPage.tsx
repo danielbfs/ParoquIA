@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import Hero from '../components/landing/Hero';
+import PriestSection from '../components/landing/PriestSection';
 import EventsSection from '../components/landing/EventsSection';
 import EventCalendar from '../components/landing/EventCalendar';
+import CommunitiesSection from '../components/landing/CommunitiesSection';
 import WorksSection from '../components/landing/WorksSection';
 import ContactSection from '../components/landing/ContactSection';
-import { SystemConfig, Event as ChurchEvent, Work } from '../types';
+import { SystemConfig, Event as ChurchEvent, Work, Community } from '../types';
 import { motion } from 'motion/react';
 import { AlertCircle, Clock } from 'lucide-react';
 
@@ -16,8 +18,36 @@ const FALLBACK_CONFIG: SystemConfig = {
   heroImageUrl: 'https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&w=1920&q=80',
   address: 'Praça da Matriz, 100 - Centro, Paróquia da Fé - SP, 12345-678',
   phone: '(11) 98765-4321',
-  email: 'contato@paroquiansdores.org.br'
+  email: 'contato@paroquiansdores.org.br',
+  priestName: 'Pe. João Batista',
+  priestRole: 'Pároco',
+  priestPhotoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80',
+  priestMessage:
+    'Que a paz de Cristo habite o seu coração. Nossa comunidade é a sua casa — venha rezar, servir e partilhar conosco a alegria do Evangelho.'
 };
+
+const FALLBACK_COMMUNITIES: Community[] = [
+  {
+    id: 'c1',
+    name: 'Comunidade São José',
+    address: 'Rua das Oliveiras, 45 - Bairro Alto',
+    massSchedule: 'Domingo às 8h e 19h\nQuarta-feira às 19h30',
+    imageUrl: 'https://images.unsplash.com/photo-1543968996-ee822b8176ba?auto=format&fit=crop&w=800&q=80',
+    isActive: true,
+    order: 1,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'c2',
+    name: 'Capela Santa Rita',
+    address: 'Estrada do Campo, s/n - Zona Rural',
+    massSchedule: 'Sábado às 17h',
+    imageUrl: 'https://images.unsplash.com/photo-1473177104440-ffee2f376098?auto=format&fit=crop&w=800&q=80',
+    isActive: true,
+    order: 2,
+    createdAt: new Date().toISOString()
+  }
+];
 
 const FALLBACK_EVENTS: ChurchEvent[] = [
   {
@@ -99,6 +129,7 @@ export default function LandingPage() {
   const [config, setConfig] = useState<SystemConfig>(FALLBACK_CONFIG);
   const [events, setEvents] = useState<ChurchEvent[]>(FALLBACK_EVENTS);
   const [works, setWorks] = useState<Work[]>(FALLBACK_WORKS);
+  const [communities, setCommunities] = useState<Community[]>(FALLBACK_COMMUNITIES);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -119,6 +150,9 @@ export default function LandingPage() {
         }
         if (data.works && Array.isArray(data.works)) {
           setWorks(data.works);
+        }
+        if (data.communities && Array.isArray(data.communities)) {
+          setCommunities(data.communities);
         }
       } catch (err) {
         console.warn('Erro ao carregar dados reais da Landing Page, usando fallback.', err);
@@ -160,11 +194,17 @@ export default function LandingPage() {
       {/* Hero Section */}
       <Hero config={config} />
 
+      {/* Palavra do Pároco */}
+      <PriestSection config={config} />
+
       {/* Events Section */}
       <EventsSection events={events} pixKey={config.pixKey} whatsappNumber={config.whatsappNumber} />
 
       {/* Monthly Calendar Section */}
       <EventCalendar events={events} pixKey={config.pixKey} whatsappNumber={config.whatsappNumber} />
+
+      {/* Nossas Comunidades */}
+      <CommunitiesSection communities={communities} />
 
       {/* Parish Works Section */}
       <WorksSection works={works} pixKey={config.pixKey} whatsappNumber={config.whatsappNumber} />

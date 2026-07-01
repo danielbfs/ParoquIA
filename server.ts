@@ -290,6 +290,11 @@ async function startServer() {
             email: rawConfig.email ?? null,
             pixKey: rawConfig.pixKey ?? null,
             whatsappNumber: rawConfig.whatsappNumber ?? null,
+            priestName: rawConfig.priestName ?? null,
+            priestRole: rawConfig.priestRole ?? null,
+            priestPhotoUrl: rawConfig.priestPhotoUrl ?? null,
+            priestMessage: rawConfig.priestMessage ?? null,
+            mapEmbedUrl: rawConfig.mapEmbedUrl ?? null,
           }
         : null;
 
@@ -306,10 +311,18 @@ async function startServer() {
         .map(doc => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) }))
         .filter((w: any) => w.isActive !== false);
 
+      // 4. Busca as comunidades ativas (isActive !== false), ordenadas por `order`
+      const communitiesSnap = await adminDb.collection("communities").get();
+      const communities = communitiesSnap.docs
+        .map(doc => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) }))
+        .filter((c: any) => c.isActive !== false)
+        .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
+
       res.status(200).json({
         config,
         events,
-        works
+        works,
+        communities
       });
     } catch (error) {
       console.error("Error in GET /api/public/landing:", error);

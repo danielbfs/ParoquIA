@@ -34,7 +34,9 @@ import {
   MapPin,
   Pencil,
   HardHat,
-  Trash2
+  Trash2,
+  UserRound,
+  Church
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -43,7 +45,7 @@ import { generateChatResponse } from './services/geminiService';
 import { evolutionService } from './services/evolutionService';
 import { auth, signInWithGoogle, storage } from './lib/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Message, Transaction, Parishioner, Event as ChurchEvent, UserProfile, SystemConfig, ConversationMeta, Critique, AuthorizedEmail, Work } from './types';
+import { Message, Transaction, Parishioner, Event as ChurchEvent, UserProfile, SystemConfig, ConversationMeta, Critique, AuthorizedEmail, Work, Community } from './types';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
   BarChart, 
@@ -84,7 +86,7 @@ const MOCK_MESSAGES: Message[] = [
 ];
 
 function PastoralPanel() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'messages' | 'finance' | 'reports' | 'events' | 'works' | 'admin' | 'chat_test'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'messages' | 'finance' | 'reports' | 'events' | 'works' | 'communities' | 'admin' | 'chat_test'>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -95,6 +97,7 @@ function PastoralPanel() {
   const [parishioners, setParishioners] = useState<Parishioner[]>([]);
   const [events, setEvents] = useState<ChurchEvent[]>([]);
   const [works, setWorks] = useState<Work[]>([]);
+  const [communities, setCommunities] = useState<Community[]>([]);
   const [conversationMetas, setConversationMetas] = useState<ConversationMeta[]>([]);
   const [critiques, setCritiques] = useState<Critique[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
@@ -198,6 +201,7 @@ function PastoralPanel() {
     const unsubParishioners = firestoreService.subscribeCollection<Parishioner>('parishioners', [], setParishioners);
     const unsubEvents = firestoreService.subscribeCollection<ChurchEvent>('events', [orderBy('date', 'asc')], setEvents);
     const unsubWorks = firestoreService.subscribeCollection<Work>('works', [orderBy('createdAt', 'desc')], setWorks);
+    const unsubCommunities = firestoreService.subscribeCollection<Community>('communities', [], setCommunities);
     const unsubConversations = firestoreService.subscribeCollection<ConversationMeta>('conversations', [orderBy('lastMessageAt', 'desc')], setConversationMetas);
     const unsubCritiques = firestoreService.subscribeCollection<Critique>('critiques', [orderBy('createdAt', 'desc')], setCritiques);
     const unsubConfig = firestoreService.subscribeCollection<SystemConfig>('config', [], (configs) => {
@@ -239,6 +243,7 @@ function PastoralPanel() {
       unsubParishioners();
       unsubEvents();
       unsubWorks();
+      unsubCommunities();
       unsubConversations();
       unsubCritiques();
       unsubConfig();
@@ -359,6 +364,7 @@ function PastoralPanel() {
     { id: 'finance', icon: Wallet, label: 'Financeiro' },
     { id: 'events', icon: Calendar, label: 'Agenda' },
     { id: 'works', icon: HardHat, label: 'Obras' },
+    { id: 'communities', icon: Church, label: 'Comunidades' },
     { id: 'reports', icon: FileSearch, label: 'Relatórios' },
     { id: 'chat_test', icon: Smartphone, label: 'Teste seu chat' },
     ...(profile?.role === 'admin' ? [{ id: 'admin', icon: Settings, label: 'Administração' }] : []),
@@ -485,6 +491,7 @@ function PastoralPanel() {
               {activeTab === 'finance' && <FinanceView transactions={transactions} config={config} />}
               {activeTab === 'events' && <EventsView events={events} />}
               {activeTab === 'works' && <ObrasView works={works} />}
+              {activeTab === 'communities' && <ComunidadesView communities={communities} />}
               {activeTab === 'reports' && <ReportsView transactions={transactions} parishioners={parishioners} />}
               {activeTab === 'chat_test' && <ChatTestView config={config} getSystemContext={getSystemMemory} />}
               {activeTab === 'admin' && profile?.role === 'admin' && (
@@ -513,6 +520,13 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
   const [pixKey, setPixKey] = useState(config?.pixKey || '');
   const [whatsappNumber, setWhatsappNumber] = useState(config?.whatsappNumber || '');
   const [heroImageUrl, setHeroImageUrl] = useState(config?.heroImageUrl || '');
+  const [priestName, setPriestName] = useState(config?.priestName || '');
+  const [priestRole, setPriestRole] = useState(config?.priestRole || 'Pároco');
+  const [priestPhotoUrl, setPriestPhotoUrl] = useState(config?.priestPhotoUrl || '');
+  const [priestMessage, setPriestMessage] = useState(config?.priestMessage || '');
+  const [mapEmbedUrl, setMapEmbedUrl] = useState(config?.mapEmbedUrl || '');
+  const [isUploadingPriest, setIsUploadingPriest] = useState(false);
+  const [priestUploadProgress, setPriestUploadProgress] = useState<number | null>(null);
   // Mesma imagem padrão do Hero.tsx — usada quando não há imagem personalizada salva.
   const DEFAULT_HERO_IMAGE = 'https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&w=1920&q=80';
   const [logoUploadProgress, setLogoUploadProgress] = useState<number | null>(null);
@@ -565,6 +579,52 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
     }
   };
 
+  const handleUploadPriestPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      alert('Formato de imagem inválido. Use PNG, JPEG, WEBP ou GIF.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      alert('Imagem muito grande. O tamanho máximo permitido é 5 MB.');
+      e.target.value = '';
+      return;
+    }
+    setIsUploadingPriest(true);
+    setPriestUploadProgress(0);
+    try {
+      const storageRef = ref(storage, `config/priest_${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setPriestUploadProgress(Math.round(progress));
+        },
+        (error) => {
+          console.error(error);
+          alert('Erro no upload da foto do pároco: ' + error.message);
+          setIsUploadingPriest(false);
+          setPriestUploadProgress(null);
+        },
+        async () => {
+          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          setPriestPhotoUrl(downloadUrl);
+          setIsUploadingPriest(false);
+          setPriestUploadProgress(null);
+        }
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao iniciar upload da foto do pároco: ' + err.message);
+      setIsUploadingPriest(false);
+      setPriestUploadProgress(null);
+    }
+  };
+
   // Modalities management
   const [modalities, setModalities] = useState<string[]>(config?.paymentModalities || []);
   const [newModality, setNewModality] = useState('');
@@ -607,6 +667,11 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
       setPixKey(config.pixKey || '');
       setWhatsappNumber(config.whatsappNumber || '');
       setHeroImageUrl(config.heroImageUrl || '');
+      setPriestName(config.priestName || '');
+      setPriestRole(config.priestRole || 'Pároco');
+      setPriestPhotoUrl(config.priestPhotoUrl || '');
+      setPriestMessage(config.priestMessage || '');
+      setMapEmbedUrl(config.mapEmbedUrl || '');
     }
   }, [config]);
 
@@ -757,6 +822,11 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
       pixKey,
       whatsappNumber,
       heroImageUrl,
+      priestName,
+      priestRole,
+      priestPhotoUrl,
+      priestMessage,
+      mapEmbedUrl,
       updatedAt: new Date().toISOString()
     };
     await firestoreService.updateDocument('config', config.id, updatedData);
@@ -944,9 +1014,103 @@ function AdminView({ config, setConfig, parishioners, critiques }: { config: Sys
               </div>
             </div>
 
+            {/* Palavra do Pároco */}
+            <div className="pt-6 border-t border-gray-100 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-[#5A5A40]/10 rounded-lg">
+                  <UserRound className="w-5 h-5 text-[#5A5A40]" />
+                </div>
+                <h4 className="text-xl font-bold">Palavra do Pároco</h4>
+              </div>
+              <p className="text-[11px] text-gray-400 px-1 -mt-1">Exibida como uma mensagem de boas-vindas na landing. Deixe em branco para ocultar a seção.</p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Nome do Pároco</label>
+                  <input
+                    type="text"
+                    value={priestName}
+                    onChange={e => setPriestName(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                    placeholder="Ex: Pe. João Batista"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Cargo</label>
+                  <input
+                    type="text"
+                    value={priestRole}
+                    onChange={e => setPriestRole(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                    placeholder="Pároco / Padre / Administrador Paroquial"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Mensagem de Boas-Vindas</label>
+                <textarea
+                  rows={3}
+                  value={priestMessage}
+                  onChange={e => setPriestMessage(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10 text-sm leading-relaxed resize-none"
+                  placeholder="Uma breve palavra de acolhida aos fiéis..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Foto do Pároco</label>
+                <div className="flex items-center gap-4">
+                  {priestPhotoUrl && (
+                    <div className="w-16 h-16 rounded-2xl border border-gray-100 overflow-hidden shrink-0">
+                      <img src={priestPhotoUrl} alt="Foto do pároco" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleUploadPriestPhoto}
+                      disabled={isUploadingPriest}
+                      className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#5A5A40]/10 file:text-[#5A5A40] hover:file:bg-[#5A5A40]/20"
+                    />
+                    {isUploadingPriest && (
+                      <div className="w-full bg-gray-100 h-2 rounded-full mt-2 overflow-hidden">
+                        <div className="bg-[#5A5A40] h-full transition-all duration-300" style={{ width: `${priestUploadProgress}%` }}></div>
+                      </div>
+                    )}
+                    {priestUploadProgress !== null && (
+                      <p className="text-[10px] text-gray-400 mt-1">Carregando: {priestUploadProgress}%</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Localização / Mapa */}
+            <div className="pt-6 border-t border-gray-100 space-y-2">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-[#5A5A40]/10 rounded-lg">
+                  <MapPin className="w-5 h-5 text-[#5A5A40]" />
+                </div>
+                <h4 className="text-xl font-bold">Mapa de Localização</h4>
+              </div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Link do Google Maps</label>
+              <input
+                type="text"
+                value={mapEmbedUrl}
+                onChange={e => setMapEmbedUrl(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                placeholder="Cole o link de incorporação (Compartilhar → Incorporar um mapa)"
+              />
+              <p className="text-[11px] text-gray-400 px-1">
+                No Google Maps: <strong>Compartilhar → Incorporar um mapa</strong> → copie o código e cole aqui (pode ser o <code>&lt;iframe&gt;</code> inteiro ou só a URL). Se vazio, o mapa usa o endereço acima. A seção aparece em "Contato &amp; Localização".
+              </p>
+            </div>
+
             <button
               onClick={handleSave}
-              disabled={isSaving || isUploadingLogo}
+              disabled={isSaving || isUploadingLogo || isUploadingPriest}
               className="w-full bg-[#5A5A40] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#4A4A35] transition-all shadow-lg shadow-[#5A5A40]/10 disabled:opacity-50"
             >
               {isSaving ? <Clock className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
@@ -3247,6 +3411,351 @@ function ObrasView({ works }: { works: Work[] }) {
                   >
                     {isSaving ? <Clock className="w-4 h-4 animate-spin" /> : editingWork ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                     {isSaving ? 'Salvando...' : editingWork ? 'Salvar Alterações' : 'Cadastrar Obra'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ComunidadesView({ communities }: { communities: Community[] }) {
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<Community | null>(null);
+
+  // Form State
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [massSchedule, setMassSchedule] = useState('');
+  const [order, setOrder] = useState<string>('');
+  const [isActive, setIsActive] = useState(true);
+  const [imageUrl, setImageUrl] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // Ordena por `order` para exibição consistente no painel (espelha a landing)
+  const orderedCommunities = useMemo(
+    () => [...communities].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [communities]
+  );
+
+  useEffect(() => {
+    if (editing) {
+      setName(editing.name || '');
+      setAddress(editing.address || '');
+      setMassSchedule(editing.massSchedule || '');
+      setOrder(editing.order != null ? String(editing.order) : '');
+      setIsActive(editing.isActive !== false);
+      setImageUrl(editing.imageUrl || '');
+      setShowModal(true);
+    } else {
+      setName('');
+      setAddress('');
+      setMassSchedule('');
+      setOrder('');
+      setIsActive(true);
+      setImageUrl('');
+    }
+  }, [editing]);
+
+  const openNew = () => { setEditing(null); setShowModal(true); };
+  const closeModal = () => { setShowModal(false); setEditing(null); };
+
+  const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      alert('Formato de imagem inválido. Use PNG, JPEG, WEBP ou GIF.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      alert('Imagem muito grande. O tamanho máximo permitido é 5 MB.');
+      e.target.value = '';
+      return;
+    }
+    setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      const storageRef = ref(storage, `communities/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(Math.round(progress));
+        },
+        (error) => {
+          console.error(error);
+          alert('Erro no upload da imagem da comunidade: ' + error.message);
+          setIsUploading(false);
+          setUploadProgress(null);
+        },
+        async () => {
+          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          setImageUrl(downloadUrl);
+          setIsUploading(false);
+          setUploadProgress(null);
+        }
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao iniciar upload da imagem da comunidade: ' + err.message);
+      setIsUploading(false);
+      setUploadProgress(null);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!name) return;
+    setIsSaving(true);
+    const parsedOrder = order.trim() === '' ? 0 : Number(order);
+    const data: Partial<Community> = {
+      name,
+      address,
+      massSchedule,
+      order: Number.isNaN(parsedOrder) ? 0 : parsedOrder,
+      isActive,
+      imageUrl,
+    };
+
+    if (editing?.id) {
+      await firestoreService.updateDocument('communities', editing.id, data);
+    } else {
+      await firestoreService.addDocument('communities', {
+        ...data,
+        createdAt: new Date().toISOString(),
+      } as Community);
+    }
+
+    setIsSaving(false);
+    closeModal();
+  };
+
+  const handleDelete = async () => {
+    if (!editing?.id) return;
+    if (confirm('Tem certeza que deseja excluir esta comunidade?')) {
+      setIsSaving(true);
+      await firestoreService.deleteDocument('communities', editing.id);
+      setIsSaving(false);
+      closeModal();
+    }
+  };
+
+  return (
+    <div className="space-y-8 h-full flex flex-col">
+      {/* Header */}
+      <div className="flex justify-between items-center bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+        <header>
+          <h3 className="text-2xl font-serif font-bold text-gray-900">Comunidades</h3>
+          <p className="text-xs text-gray-500 font-medium">Capelas e comunidades exibidas na landing page</p>
+        </header>
+
+        <button
+          onClick={openNew}
+          className="bg-[#5A5A40] text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:shadow-lg transition-all"
+        >
+          <Plus className="w-5 h-5" /> Nova Comunidade
+        </button>
+      </div>
+
+      {/* Grid */}
+      {communities.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-3xl border border-gray-100 shadow-sm p-12 text-center">
+          <div className="w-16 h-16 bg-[#5A5A40]/10 rounded-2xl flex items-center justify-center mb-4">
+            <Church className="w-8 h-8 text-[#5A5A40]" />
+          </div>
+          <h4 className="text-lg font-serif font-bold text-gray-900 mb-1">Nenhuma comunidade cadastrada</h4>
+          <p className="text-sm text-gray-500 mb-6">Cadastre as capelas e comunidades para exibi-las na página pública.</p>
+          <button
+            onClick={openNew}
+            className="bg-[#5A5A40] text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:shadow-lg transition-all"
+          >
+            <Plus className="w-5 h-5" /> Nova Comunidade
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {orderedCommunities.map((community) => (
+            <motion.button
+              key={community.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onClick={() => setEditing(community)}
+              className="text-left bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-all group flex flex-col"
+            >
+              <div className="relative h-40 bg-gray-50 overflow-hidden">
+                {community.imageUrl ? (
+                  <img src={community.imageUrl} alt={community.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Church className="w-10 h-10 text-gray-300" />
+                  </div>
+                )}
+                <span className={cn(
+                  "absolute top-3 right-3 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                  community.isActive === false
+                    ? "bg-gray-100 text-gray-400"
+                    : "bg-emerald-100 text-emerald-700"
+                )}>
+                  {community.isActive === false ? 'Inativa' : 'Ativa'}
+                </span>
+              </div>
+              <div className="p-5 flex-1 flex flex-col">
+                <h4 className="font-serif font-bold text-gray-900 leading-tight mb-2">{community.name}</h4>
+                {community.address && (
+                  <p className="text-xs text-gray-500 flex items-start gap-1.5 mb-1">
+                    <MapPin className="w-3.5 h-3.5 text-[#5A5A40] shrink-0 mt-0.5" />
+                    <span className="line-clamp-2">{community.address}</span>
+                  </p>
+                )}
+                {community.massSchedule && (
+                  <p className="text-xs text-gray-500 flex items-start gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-[#5A5A40] shrink-0 mt-0.5" />
+                    <span className="line-clamp-2 whitespace-pre-line">{community.massSchedule}</span>
+                  </p>
+                )}
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      )}
+
+      {/* Modal */}
+      <AnimatePresence>
+        {showModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="w-full max-w-lg bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#5A5A40] rounded-xl flex items-center justify-center shadow-lg shadow-[#5A5A40]/20">
+                    <Church className="w-5 h-5 text-white" />
+                  </div>
+                  <h3 className="text-xl font-serif font-bold text-gray-900">
+                    {editing ? 'Editar Comunidade' : 'Nova Comunidade'}
+                  </h3>
+                </div>
+                <button onClick={closeModal} className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Nome</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    placeholder="Ex: Comunidade São José"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Endereço</label>
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={e => setAddress(e.target.value)}
+                    placeholder="Rua, número - bairro"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Horários de Missa</label>
+                  <textarea
+                    value={massSchedule}
+                    onChange={e => setMassSchedule(e.target.value)}
+                    rows={3}
+                    placeholder={'Ex:\nDomingo às 8h e 19h\nQuarta-feira às 19h30'}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10 resize-none"
+                  />
+                  <p className="text-[10px] text-gray-400 px-1">Uma linha por horário. As quebras de linha aparecem na landing.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Ordem de Exibição</label>
+                  <input
+                    type="number"
+                    value={order}
+                    onChange={e => setOrder(e.target.value)}
+                    placeholder="0"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-[#5A5A40]/10"
+                  />
+                  <p className="text-[10px] text-gray-400 px-1">Menor valor aparece primeiro na landing.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block px-1">Imagem da Comunidade</label>
+                  <div className="flex items-center gap-4">
+                    {imageUrl && (
+                      <div className="w-16 h-16 rounded-xl border border-gray-100 overflow-hidden shrink-0">
+                        <img src={imageUrl} alt="Imagem da comunidade" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleUploadImage}
+                        disabled={isUploading}
+                        className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#5A5A40]/10 file:text-[#5A5A40] hover:file:bg-[#5A5A40]/20"
+                      />
+                      {isUploading && (
+                        <div className="w-full bg-gray-100 h-2 rounded-full mt-2 overflow-hidden">
+                          <div className="bg-[#5A5A40] h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                        </div>
+                      )}
+                      {uploadProgress !== null && (
+                        <p className="text-[10px] text-gray-400 mt-1">Carregando: {uploadProgress}%</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                  <input
+                    type="checkbox"
+                    id="community-active"
+                    checked={isActive}
+                    onChange={e => setIsActive(e.target.checked)}
+                    className="accent-[#5A5A40] w-5 h-5"
+                  />
+                  <label htmlFor="community-active" className="flex-1 text-sm font-bold text-emerald-900 cursor-pointer">
+                    Ativa (exibir na landing)
+                    <span className="block text-[10px] font-medium opacity-70">Quando marcada, a comunidade aparece na página pública.</span>
+                  </label>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  {editing?.id && (
+                    <button
+                      onClick={handleDelete}
+                      disabled={isSaving || isUploading}
+                      className="flex-1 border-2 border-red-100 text-red-500 py-4 rounded-xl font-bold hover:bg-red-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      <Trash2 className="w-4 h-4" /> Excluir
+                    </button>
+                  )}
+                  <button
+                    onClick={handleSave}
+                    disabled={isSaving || isUploading || !name}
+                    className="flex-[2] bg-[#5A5A40] text-white py-4 rounded-xl font-bold hover:bg-[#4A4A35] transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#5A5A40]/20 disabled:opacity-50"
+                  >
+                    {isSaving ? <Clock className="w-4 h-4 animate-spin" /> : editing ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    {isSaving ? 'Salvando...' : editing ? 'Salvar Alterações' : 'Cadastrar Comunidade'}
                   </button>
                 </div>
               </div>

@@ -115,14 +115,14 @@ export default function EventCalendar({ events, pixKey, whatsappNumber }: EventC
     return format(currentDate, "EEEE, dd 'de' MMMM", { locale: ptBR });
   }, [view, currentDate, weekStart, weekEnd]);
 
-  // ===== Cores por tipo =====
+  // ===== Cores por tipo (oliva = recorrente/ritmo; âmbar = especial/destaque) =====
   const dotColor = (event: ChurchEvent) =>
-    event.isRecurring ? 'bg-purple-500' : 'bg-emerald-500';
+    event.isRecurring ? 'bg-[#5A5A40]' : 'bg-[#B8763E]';
 
   const chipClasses = (event: ChurchEvent) =>
     event.isRecurring
-      ? 'bg-purple-50 border-purple-200 text-purple-800 hover:border-purple-400'
-      : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:border-emerald-400';
+      ? 'bg-[#5A5A40]/[0.06] border-[#5A5A40]/20 text-[#3F4030] hover:border-[#5A5A40]/50'
+      : 'bg-[#B8763E]/[0.08] border-[#B8763E]/25 text-[#8A5628] hover:border-[#B8763E]/55';
 
   const getEventTime = (event: ChurchEvent) =>
     event.startTime
@@ -147,9 +147,9 @@ export default function EventCalendar({ events, pixKey, whatsappNumber }: EventC
   };
 
   return (
-    <section id="calendario" className="py-24 bg-[#F5F5F0]">
+    <section id="calendario" className="py-20 bg-[#F5F5F0]">
       <div className="max-w-4xl mx-auto px-6">
-        <div className="text-center mb-16">
+        <div className="text-center mb-12">
           <motion.p
             initial={{ opacity: 0, y: 10 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -355,11 +355,11 @@ export default function EventCalendar({ events, pixKey, whatsappNumber }: EventC
           {/* Legenda de cores por tipo */}
           <div className="flex items-center justify-center gap-6 py-4 border-t border-gray-100 bg-white text-xs font-medium text-gray-500">
             <span className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#5A5A40]" />
               Recorrente
             </span>
             <span className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#B8763E]" />
               Evento especial
             </span>
           </div>
