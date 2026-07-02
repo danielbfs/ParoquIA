@@ -31,6 +31,11 @@ jobs:
 
       - run: npm ci
 
+      # firebase-applet-config.json é gitignored (ausente na CI); tsc importa esse
+      # módulo. Stub vazio só para o typecheck/lint — o valor real vai na imagem.
+      - name: Stub de config do Firebase
+        run: 'echo "{}" > firebase-applet-config.json'
+
       - name: Typecheck
         run: npx tsc --noEmit
 

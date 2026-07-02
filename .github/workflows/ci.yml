@@ -19,16 +19,17 @@ jobs:
 
       - run: npm ci
 
+      # O código importa firebase-applet-config.json (gitignored, ausente na CI).
+      # tsc e o build precisam do arquivo existindo; um stub vazio basta para
+      # validar a compilação (os valores reais só entram na imagem de deploy).
+      - name: Stub de config do Firebase
+        run: 'echo "{}" > firebase-applet-config.json'
+
       - name: Typecheck
         run: npx tsc --noEmit
 
       - name: ESLint
         run: npx eslint .
-
-      # O build importa firebase-applet-config.json; um stub vazio basta para
-      # validar a compilação (os valores reais só entram na imagem de deploy).
-      - name: Stub de config do Firebase
-        run: 'echo "{}" > firebase-applet-config.json'
 
       - name: Build
         run: npm run build
