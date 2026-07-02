@@ -22,6 +22,9 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: ESLint
+        run: npx eslint .
+
       # O build importa firebase-applet-config.json; um stub vazio basta para
       # validar a compilação (os valores reais só entram na imagem de deploy).
       - name: Stub de config do Firebase

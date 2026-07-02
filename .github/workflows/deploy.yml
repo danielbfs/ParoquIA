@@ -16,7 +16,29 @@ env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/paroquia
 
 jobs:
+  # Repete o typecheck/lint da CI antes de buildar a imagem: como CI e Deploy
+  # disparam em paralelo no push:main, sem esse gate um typecheck quebrado
+  # não impediria o deploy de ir pra produção.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npx eslint .
+
   build-push:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -55,29 +77,56 @@ jobs:
     needs: build-push
     runs-on: ubuntu-latest
     environment: production   # <- porta de aprovação manual
+    permissions:
+      contents: read
+      packages: read          # <- GITHUB_TOKEN pode baixar a imagem privada do GHCR
+    env:
+      IMAGE_TAG: ${{ github.sha }}
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          # Credenciais efêmeras do run: o servidor loga no GHCR para baixar a
+          # imagem PRIVADA. Válidas só durante o deploy — nada persiste no host.
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script_stop: true
+          envs: IMAGE_TAG,GHCR_USER,GHCR_TOKEN
           script: |
+            set -e
             cd ~/app
             git pull --ff-only
+            # login no GHCR (imagem privada) com o token efêmero do run
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            # imagem atualmente em uso, para rollback
+            PREV=$(docker inspect --format '{{index .Config.Image}}' paroquia-ai 2>/dev/null || true)
+            export IMAGE_TAG="$IMAGE_TAG"
             docker compose pull app
-            docker compose up -d
+            docker compose up -d app
+            # health check (via URL pública, pois a 3000 não é publicada no host)
+            ok=0
+            for i in $(seq 1 6); do
+              code=$(curl -s -o /dev/null -w "%{http_code}" https://paroquia.sigame.tec.br/api/public/landing || true)
+              echo "tentativa $i -> HTTP $code"
+              if [ "$code" = "200" ]; then ok=1; break; fi
+              sleep 10
+            done
+            if [ "$ok" != "1" ]; then
+              echo "Health check falhou — revertendo para $PREV"
+              # Re-tag da imagem anterior (qualquer forma: build local `app-app`
+              # ou `ghcr.io/...:<sha>`) para um alias que o compose sabe subir.
+              # A imagem PREV ainda está presente no host (era a que rodava).
+              if [ -n "$PREV" ] && docker image inspect "$PREV" >/dev/null 2>&1; then
+                docker tag "$PREV" ghcr.io/danielbfs/paroquia:rollback
+                IMAGE_TAG=rollback docker compose up -d app
+              else
+                echo "AVISO: imagem anterior ($PREV) indisponível — rollback manual necessário."
+              fi
+              exit 1
+            fi
             docker exec paroquia-ai node /app/scripts/publish-firestore-rules.mjs
             docker compose ps
-
-      - name: Health check
-        run: |
-          for i in 1 2 3 4 5 6; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" https://paroquia.sigame.tec.br/api/public/landing || true)
-            echo "tentativa $i -> HTTP $code"
-            if [ "$code" = "200" ]; then exit 0; fi
-            sleep 10
-          done
-          echo "Health check falhou (endpoint não retornou 200)."
-          exit 1
